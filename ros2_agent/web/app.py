@@ -14,25 +14,23 @@ from __future__ import annotations
 
 import asyncio
 import json
-import uuid
-from typing import AsyncIterator
+import pathlib
+from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ros2_agent.agent.core import ROS2Agent
 from ros2_agent.config.settings import Settings
 from ros2_agent.simulation.robot_sim import get_sim
 
-import pathlib
-
 STATIC_DIR = pathlib.Path(__file__).parent / "static"
 
 
 # ── Request / response models ─────────────────────────────────────────────────
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -45,6 +43,7 @@ class ChatResponse(BaseModel):
 
 
 # ── App factory ───────────────────────────────────────────────────────────────
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
@@ -177,6 +176,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def sim_goal(x: float, y: float) -> dict:
         """Directly set a navigation goal without going through the LLM."""
         import random as _r
+
         sim.set_goal(x, y, goal_id=_r.randint(100000, 999999))
         return {"ok": True, "goal_x": x, "goal_y": y}
 

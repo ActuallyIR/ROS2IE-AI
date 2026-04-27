@@ -248,6 +248,7 @@ class MockROS2:
             sim = get_sim()
             s = sim.state
             import math as _math
+
             qz = _math.sin(s.theta / 2)
             qw = _math.cos(s.theta / 2)
             return (
@@ -284,7 +285,7 @@ class MockROS2:
         if "imu" in topic:
             return (
                 f"header:\n  stamp:\n    sec: {sec}\n  frame_id: imu_link\n"
-                f"orientation:\n  x: 0.0\n  y: 0.0\n  z: {random.uniform(-1,1):.4f}\n  w: {random.uniform(0,1):.4f}\n"
+                f"orientation:\n  x: 0.0\n  y: 0.0\n  z: {random.uniform(-1, 1):.4f}\n  w: {random.uniform(0, 1):.4f}\n"
                 f"angular_velocity:\n  x: {random.uniform(-0.01, 0.01):.6f}\n"
                 f"  y: {random.uniform(-0.01, 0.01):.6f}\n"
                 f"  z: {random.uniform(-0.05, 0.05):.6f}\n"
@@ -388,6 +389,7 @@ class MockROS2:
                     # Try key=value style: x: 3.0, y: 1.5
                     try:
                         import re
+
                         raw = " ".join(positionals[1:])
                         gx = float(re.search(r"x[:\s]+([\d.\-]+)", raw).group(1))  # type: ignore[union-attr]
                         gy = float(re.search(r"y[:\s]+([\d.\-]+)", raw).group(1))  # type: ignore[union-attr]
@@ -500,9 +502,7 @@ class MockROS2:
         if cmd == "executables":
             rest = args[1:]
             pkg = next((a for a in rest if not a.startswith("-")), "nav2_bringup")
-            return CommandResult(
-                success=True, stdout=f"{pkg}  bringup\n{pkg}  localization\n"
-            )
+            return CommandResult(success=True, stdout=f"{pkg}  bringup\n{pkg}  localization\n")
 
         return CommandResult(success=False, error=f"[mock] Unknown pkg sub-command: {cmd}")
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from langchain_core.tools import tool
 
 from ros2_agent.ros2.bridge import ROS2Bridge
@@ -70,7 +69,9 @@ def create_log_tools(bridge: ROS2Bridge) -> list:
             return f"Could not read logs: {result.output}"
 
         lines = result.stdout.strip().splitlines()
-        errors = [l for l in lines if "ERROR" in l.upper() or "FATAL" in l.upper()][:count]
+        errors = [line for line in lines if "ERROR" in line.upper() or "FATAL" in line.upper()][
+            :count
+        ]
 
         if not errors:
             return "No ERROR or FATAL log messages found. System appears healthy."
@@ -95,12 +96,16 @@ def create_log_tools(bridge: ROS2Bridge) -> list:
             return f"Could not read logs: {result.output}"
 
         lines = result.stdout.strip().splitlines()
-        issues = [l for l in lines if any(kw in l.upper() for kw in ("ERROR", "FATAL", "WARN"))][:count]
+        issues = [
+            line
+            for line in lines
+            if any(keyword in line.upper() for keyword in ("ERROR", "FATAL", "WARN"))
+        ][:count]
 
         if not issues:
             return "No warnings or errors found in recent logs. System looks healthy."
 
         header = f"Found {len(issues)} warning(s)/error(s) in recent logs:\n"
-        return header + "\n".join(f"  [{i + 1}] {l}" for i, l in enumerate(issues))
+        return header + "\n".join(f"  [{i + 1}] {line}" for i, line in enumerate(issues))
 
     return [get_ros_logs, get_error_logs, explain_errors]

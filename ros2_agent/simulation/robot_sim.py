@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 
 # ── Map definition (10 m × 10 m room) ────────────────────────────────────────
 
-MAP_SIZE: float = 10.0          # metres, square room
-ROBOT_RADIUS: float = 0.22      # metres
+MAP_SIZE: float = 10.0  # metres, square room
+ROBOT_RADIUS: float = 0.22  # metres
 
 # Obstacles as (x, y, width, height) in metres
 OBSTACLES: list[tuple[float, float, float, float]] = [
@@ -42,14 +42,15 @@ OBSTACLES: list[tuple[float, float, float, float]] = [
 
 # ── State dataclass ───────────────────────────────────────────────────────────
 
+
 @dataclass
 class RobotState:
     x: float = 1.5
     y: float = 1.5
-    theta: float = 0.0          # radians, CCW from +X
-    vx: float = 0.0             # m/s forward
-    omega: float = 0.0          # rad/s angular
-    battery: float = 85.0       # percent
+    theta: float = 0.0  # radians, CCW from +X
+    vx: float = 0.0  # m/s forward
+    omega: float = 0.0  # rad/s angular
+    battery: float = 85.0  # percent
     goal_x: float | None = None
     goal_y: float | None = None
     goal_id: int | None = None
@@ -62,29 +63,30 @@ class RobotState:
 
 # ── Simulator ─────────────────────────────────────────────────────────────────
 
+
 class RobotSim:
     """Async differential-drive robot simulation."""
 
-    DT: float = 0.05            # seconds per tick (20 Hz)
-    LIDAR_RAYS: int = 90         # 90 rays ≈ realistic budget RPLIDAR
-    LIDAR_MAX: float = 6.0      # metres
-    NAV_K_ANGLE: float = 2.5    # P-gain for heading error
-    NAV_K_SPEED: float = 0.55   # max forward speed
+    DT: float = 0.05  # seconds per tick (20 Hz)
+    LIDAR_RAYS: int = 90  # 90 rays ≈ realistic budget RPLIDAR
+    LIDAR_MAX: float = 6.0  # metres
+    NAV_K_ANGLE: float = 2.5  # P-gain for heading error
+    NAV_K_SPEED: float = 0.55  # max forward speed
     GOAL_TOLERANCE: float = 0.20
 
     # Motor dynamics (acceleration limits — makes motion feel physical)
-    _MAX_ACCEL: float = 1.5      # m/s² forward acceleration limit
-    _MAX_ALPHA: float = 4.0      # rad/s² angular acceleration limit
+    _MAX_ACCEL: float = 1.5  # m/s² forward acceleration limit
+    _MAX_ALPHA: float = 4.0  # rad/s² angular acceleration limit
 
     # Sensor noise
     _LIDAR_NOISE_SIGMA: float = 0.018  # Gaussian σ on LiDAR ranges (metres)
     _LIDAR_DROPOUT_PROB: float = 0.012  # probability of a ray returning max range (glass/dropout)
 
     # Obstacle avoidance
-    _FRONT_HALF_ANGLE: float = math.pi / 3   # ±60° cone treated as "front"
-    _DANGER_DIST: float = 0.55               # slow down below this clearance
-    _ESCAPE_TICKS: int = 60                  # ticks to run escape manoeuvre (~3 s)
-    _STUCK_TICKS: int = 25                   # ticks without movement = stuck (~1.25 s)
+    _FRONT_HALF_ANGLE: float = math.pi / 3  # ±60° cone treated as "front"
+    _DANGER_DIST: float = 0.55  # slow down below this clearance
+    _ESCAPE_TICKS: int = 60  # ticks to run escape manoeuvre (~3 s)
+    _STUCK_TICKS: int = 25  # ticks without movement = stuck (~1.25 s)
 
     def __init__(self) -> None:
         self.state = RobotState()
@@ -95,13 +97,13 @@ class RobotSim:
         self._task: asyncio.Task | None = None  # type: ignore[type-arg]
 
         # Escape / stuck tracking
-        self._escape_countdown: int = 0       # ticks remaining in escape mode
-        self._escape_omega: float = 1.5       # direction of escape turn
-        self._escape_phase: int = 0           # 0=turn, 1=forward-slide past obstacle
-        self._no_move_ticks: int = 0          # consecutive ticks with near-zero movement
+        self._escape_countdown: int = 0  # ticks remaining in escape mode
+        self._escape_omega: float = 1.5  # direction of escape turn
+        self._escape_phase: int = 0  # 0=turn, 1=forward-slide past obstacle
+        self._no_move_ticks: int = 0  # consecutive ticks with near-zero movement
         self._last_x: float = self.state.x
         self._last_y: float = self.state.y
-        self._consec_escapes: int = 0         # how many escapes from same spot
+        self._consec_escapes: int = 0  # how many escapes from same spot
 
     # ── Public control API ────────────────────────────────────────────────────
 
@@ -170,6 +172,7 @@ class RobotSim:
             # If stuck many times in a row, randomise direction
             if self._consec_escapes % 3 == 0:
                 import random
+
                 self._escape_omega = random.choice([-1.5, 1.5])
             else:
                 self._escape_omega = self._lidar_clear_omega(s)
@@ -180,7 +183,7 @@ class RobotSim:
             #   Phase 0 (first half): back up hard while turning toward clear space
             #   Phase 1 (second half): slide forward in that direction to clear the obstacle
             self._escape_countdown -= 1
-            phase_boundary = self._ESCAPE_TICKS // 3   # switch to phase-1 after 1/3
+            phase_boundary = self._ESCAPE_TICKS // 3  # switch to phase-1 after 1/3
             if self._escape_countdown > (self._ESCAPE_TICKS - phase_boundary):
                 # Phase 0: reverse + turn
                 self._cmd_vx = -0.25
@@ -192,7 +195,7 @@ class RobotSim:
                     self._escape_phase = 1
                     self._escape_omega = self._lidar_clear_omega(s)
                 self._cmd_vx = 0.22
-                self._cmd_omega = self._escape_omega * 0.5   # gentle curve, not full turn
+                self._cmd_omega = self._escape_omega * 0.5  # gentle curve, not full turn
 
         elif s.nav_active and s.goal_x is not None and s.goal_y is not None:
             dx = s.goal_x - s.x
@@ -211,7 +214,9 @@ class RobotSim:
 
                 # Adaptive speed: slow near obstacles and when misaligned
                 front_clear = self._front_clearance(s)
-                obstacle_factor = min(1.0, max(0.0, (front_clear - ROBOT_RADIUS) / self._DANGER_DIST))
+                obstacle_factor = min(
+                    1.0, max(0.0, (front_clear - ROBOT_RADIUS) / self._DANGER_DIST)
+                )
                 alignment = 1.0 - min(1.0, abs(angle_err) / (math.pi / 3))
                 self._cmd_vx = self.NAV_K_SPEED * alignment * obstacle_factor * min(1.0, dist * 0.8)
 
@@ -260,6 +265,7 @@ class RobotSim:
                 self._escape_phase = 0
                 if self._consec_escapes % 3 == 0:
                     import random
+
                     self._escape_omega = random.choice([-1.5, 1.5])
                 else:
                     self._escape_omega = self._lidar_clear_omega(s)
@@ -302,7 +308,7 @@ class RobotSim:
             return 1.5
         n = len(s.lidar)
         # Left half: rays 1..n//2, right half: rays n//2+1..n-1
-        left  = sum(s.lidar[i] for i in range(1, n // 2))
+        left = sum(s.lidar[i] for i in range(1, n // 2))
         right = sum(s.lidar[i] for i in range(n // 2 + 1, n))
         return 1.5 if left >= right else -1.5
 
@@ -312,9 +318,9 @@ class RobotSim:
             return 0.0
         n = len(s.lidar)
         # Rays in the ±90° lateral bands
-        left_rays  = [s.lidar[i] for i in range(n // 8, 3 * n // 8)]
+        left_rays = [s.lidar[i] for i in range(n // 8, 3 * n // 8)]
         right_rays = [s.lidar[i] for i in range(5 * n // 8, 7 * n // 8)]
-        l_min = min(left_rays)  if left_rays  else self.LIDAR_MAX
+        l_min = min(left_rays) if left_rays else self.LIDAR_MAX
         r_min = min(right_rays) if right_rays else self.LIDAR_MAX
         threshold = 0.45
         if l_min < threshold or r_min < threshold:
@@ -324,7 +330,7 @@ class RobotSim:
 
     def _collides(self, x: float, y: float) -> bool:
         r = ROBOT_RADIUS
-        for (ox, oy, w, h) in OBSTACLES:
+        for ox, oy, w, h in OBSTACLES:
             if (ox - r) <= x <= (ox + w + r) and (oy - r) <= y <= (oy + h + r):
                 return True
         return False
@@ -332,9 +338,10 @@ class RobotSim:
     def _cast_lidar(self) -> list[float]:
         """Cast LIDAR_RAYS rays from current position, return ranges with sensor noise."""
         import random
+
         s = self.state
         ranges: list[float] = []
-        step = 0.04          # ray march step size (metres)
+        step = 0.04  # ray march step size (metres)
         n_steps = int(self.LIDAR_MAX / step)
 
         for i in range(self.LIDAR_RAYS):
@@ -359,7 +366,7 @@ class RobotSim:
                     break
 
                 # Obstacles
-                for (ox, oy, w, h) in OBSTACLES:
+                for ox, oy, w, h in OBSTACLES:
                     if ox <= px <= ox + w and oy <= py <= oy + h:
                         hit = j * step
                         break
@@ -415,6 +422,7 @@ def get_sim() -> RobotSim:
 
 
 # ── Utility ───────────────────────────────────────────────────────────────────
+
 
 def _angle_diff(a: float, b: float) -> float:
     """Signed angle difference, result in [-pi, pi]."""

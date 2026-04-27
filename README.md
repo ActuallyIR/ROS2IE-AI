@@ -57,14 +57,11 @@
 </video>
 -->
 
-<!-- YouTube clickable thumbnail (replace VIDEO_ID) -->
-<!--
-<a href="https://youtu.be/YOUR_VIDEO_ID">
-  <img src="https://img.youtube.com/vi/YOUR_VIDEO_ID/maxresdefault.jpg"
+<a href="https://youtu.be/2BCnEqTPbeg">
+  <img src="https://img.youtube.com/vi/2BCnEqTPbeg/maxresdefault.jpg"
        alt="ROSIE demo — click to watch" width="100%" />
 </a>
-<sub>▶ Click to watch the 90-second demo</sub>
--->
+<sub>▶ Click to watch the demo video · source: <a href="https://github.com/ActuallyIR/ROS2IE-AI">ActuallyIR/ROS2IE-AI</a></sub>
 
 </div>
 

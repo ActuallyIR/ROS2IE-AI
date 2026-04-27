@@ -2,20 +2,13 @@
 
 from __future__ import annotations
 
-import sys
-from typing import Optional
-
 import typer
 from rich.console import Console
-from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.rule import Rule
-from rich.spinner import Spinner
 from rich.table import Table
-from rich.text import Text
-from rich import print as rprint
 
 from ros2_agent import __version__
 from ros2_agent.config.settings import Settings
@@ -32,6 +25,7 @@ err_console = Console(stderr=True, style="bold red")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _print_banner(settings: Settings) -> None:
     mode_text = "[yellow]MOCK[/yellow]" if settings.mock_ros2 else "[green]LIVE[/green]"
@@ -60,15 +54,28 @@ def _render_tool_result(name: str, content: str) -> str:
 
 # ── Commands ──────────────────────────────────────────────────────────────────
 
+
 @app.command()
 def chat(
-    provider: Optional[str] = typer.Option(None, "--provider", "-p", help="LLM provider: openai | anthropic | ollama"),
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="Model name (e.g. gpt-4o, claude-haiku-4-5-20251001)"),
-    ros_domain_id: Optional[int] = typer.Option(None, "--domain-id", "-d", help="ROS_DOMAIN_ID (default: 0)"),
-    ros_distro: Optional[str] = typer.Option(None, "--distro", help="ROS 2 distro (humble/iron/jazzy)"),
-    mock: bool = typer.Option(False, "--mock", help="Use simulated ROS 2 data (no real robot needed)"),
+    provider: str | None = typer.Option(
+        None, "--provider", "-p", help="LLM provider: openai | anthropic | ollama"
+    ),
+    model: str | None = typer.Option(
+        None, "--model", "-m", help="Model name (e.g. gpt-4o, claude-haiku-4-5-20251001)"
+    ),
+    ros_domain_id: int | None = typer.Option(
+        None, "--domain-id", "-d", help="ROS_DOMAIN_ID (default: 0)"
+    ),
+    ros_distro: str | None = typer.Option(
+        None, "--distro", help="ROS 2 distro (humble/iron/jazzy)"
+    ),
+    mock: bool = typer.Option(
+        False, "--mock", help="Use simulated ROS 2 data (no real robot needed)"
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show raw tool outputs"),
-    session_id: Optional[str] = typer.Option(None, "--session", "-s", help="Session ID for persistent memory"),
+    session_id: str | None = typer.Option(
+        None, "--session", "-s", help="Session ID for persistent memory"
+    ),
 ) -> None:
     """[bold cyan]Start an interactive ROS 2 Agent chat session.[/bold cyan]
 
@@ -141,7 +148,9 @@ def chat(
 
                 elif event.kind == "tool_result":
                     if verbose:
-                        console.print(_render_tool_result(event.data["name"], event.data["content"]))
+                        console.print(
+                            _render_tool_result(event.data["name"], event.data["content"])
+                        )
 
                 elif event.kind == "text":
                     # Stream text character by character feel
@@ -157,14 +166,15 @@ def chat(
             console.print(f"\n[red]Error: {exc}[/red]")
             if verbose:
                 import traceback
+
                 traceback.print_exc()
 
 
 @app.command()
 def run(
     query: str = typer.Argument(..., help="Single query to run non-interactively"),
-    provider: Optional[str] = typer.Option(None, "--provider", "-p"),
-    model: Optional[str] = typer.Option(None, "--model", "-m"),
+    provider: str | None = typer.Option(None, "--provider", "-p"),
+    model: str | None = typer.Option(None, "--model", "-m"),
     mock: bool = typer.Option(False, "--mock"),
     json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
 ) -> None:
@@ -222,7 +232,6 @@ def info() -> None:
     table.add_row("Max Iterations", str(settings.max_iterations))
     table.add_row("Web Host:Port", f"{settings.web_host}:{settings.web_port}")
 
-    from ros2_agent.ros2.bridge import ROS2Bridge
     import shutil
 
     ros2_on_path = shutil.which("ros2") is not None
@@ -247,6 +256,7 @@ def web(
     Then open http://localhost:8080 in your browser.
     """
     import uvicorn
+
     from ros2_agent.web.app import create_app
 
     overrides: dict = {}
@@ -267,6 +277,7 @@ def web(
 
 # ── Version callback ──────────────────────────────────────────────────────────
 
+
 def _version_callback(value: bool) -> None:
     if value:
         typer.echo(f"ros2-agent v{__version__}")
@@ -275,7 +286,7 @@ def _version_callback(value: bool) -> None:
 
 @app.callback()
 def main_callback(
-    version: Optional[bool] = typer.Option(
+    version: bool | None = typer.Option(
         None, "--version", callback=_version_callback, is_eager=True, help="Print version and exit"
     ),
 ) -> None:

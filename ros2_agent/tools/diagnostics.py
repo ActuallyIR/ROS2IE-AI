@@ -43,7 +43,9 @@ def create_diagnostic_tools(bridge: ROS2Bridge) -> list:
         # 3. Battery (if available)
         batt_result = bridge.run(["topic", "echo", "--once", "/battery_state"], timeout=3)
         if batt_result.success and batt_result.stdout:
-            pct_lines = [l for l in batt_result.stdout.splitlines() if "percentage" in l.lower()]
+            pct_lines = [
+                line for line in batt_result.stdout.splitlines() if "percentage" in line.lower()
+            ]
             if pct_lines:
                 steps.append(f"✓ Battery: {pct_lines[0].strip()}")
         else:
@@ -59,7 +61,9 @@ def create_diagnostic_tools(bridge: ROS2Bridge) -> list:
         # 5. ros2 doctor summary
         doctor_result = bridge.run(["doctor"], timeout=20)
         if doctor_result.success:
-            first_line = doctor_result.stdout.strip().splitlines()[0] if doctor_result.stdout else ""
+            first_line = (
+                doctor_result.stdout.strip().splitlines()[0] if doctor_result.stdout else ""
+            )
             steps.append(f"✓ ros2 doctor: {first_line}")
         else:
             steps.append(f"✗ ros2 doctor: {doctor_result.output}")
