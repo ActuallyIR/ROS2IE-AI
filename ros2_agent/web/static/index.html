@@ -1,0 +1,626 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ROS2 Agent</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --accent: #22d3ee;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --orange: #f97316;
+    --red: #ef4444;
+    --bg: #020812;
+    --bg2: #0a0f18;
+    --bg3: #0d1117;
+    --bg4: #111827;
+    --border: #1a2332;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; background: var(--bg); }
+  .msg-user  { background: linear-gradient(135deg,#071828,#040e1a); border-left:3px solid var(--accent); }
+  .msg-agent { background: linear-gradient(135deg,#0a0f18,#0d1320); border-left:3px solid #253040; }
+  .tool-call { background: #040e09; border-left:3px solid #15803d; }
+  pre,code { font-family: 'JetBrains Mono','Fira Code',monospace; }
+  pre { white-space:pre-wrap; word-break:break-word; }
+  #chat-box { scroll-behavior:smooth; }
+  .status-dot { width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0; }
+  .s-live { background:var(--green); box-shadow:0 0 8px var(--green); animation:blink 2s infinite; }
+  .s-mock { background:var(--yellow); box-shadow:0 0 6px var(--yellow); animation:blink 3s infinite; }
+  .s-off  { background:#374151; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .spinner { display:inline-block;width:13px;height:13px;border:2px solid #1a2332;
+             border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  ::-webkit-scrollbar { width:4px;height:4px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:#1f2937;border-radius:4px; }
+  .badge { padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.05em; }
+  .badge-mock { background:#1c1400;color:var(--yellow);border:1px solid #2d2100; }
+  .badge-live { background:#001c0f;color:var(--green);border:1px solid #002d18; }
+  .tel-card { background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 10px; }
+  .qgoal { background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:3px 8px;
+           font-size:10px;color:#6b7280;cursor:pointer;transition:all .15s; }
+  .qgoal:hover { border-color:var(--accent);color:var(--accent);background:#071828; }
+  .view-btn { padding:2px 7px;border-radius:3px;font-size:10px;cursor:pointer;
+              border:1px solid var(--border);background:var(--bg3);color:#4b5563;transition:all .15s; }
+  .view-btn.active { border-color:var(--accent);color:var(--accent);background:#071828; }
+  .msg-fade { animation:fadeIn .2s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none} }
+  .nav-idle   { color:#4b5563; }
+  .nav-moving { color:var(--accent); }
+  .nav-escape { color:var(--yellow); }
+  .nav-done   { color:var(--green); }
+  .dpad-btn {
+    background:var(--bg4);color:#6b7280;border:1px solid var(--border);border-radius:6px;
+    width:38px;height:32px;font-size:13px;cursor:pointer;transition:all .1s;
+    display:flex;align-items:center;justify-content:center;user-select:none;
+  }
+  .dpad-btn:hover { border-color:#374151;color:#9ca3af;background:#1a2332; }
+  .dpad-btn:active,.dpad-btn.pressed { background:#071828;border-color:var(--accent);color:var(--accent); }
+  .dpad-stop { color:#7f1d1d; }
+  .dpad-stop:hover { border-color:#991b1b;color:#ef4444;background:#1a0505; }
+  .hint-row { font-size:9px;color:#374151;line-height:1.8; }
+</style>
+</head>
+<body class="bg-[#020812] text-gray-100 h-screen flex flex-col overflow-hidden">
+
+<!-- Header -->
+<header class="bg-[#0a0f18] border-b border-[#1a2332] px-4 py-2.5 flex items-center gap-3 flex-shrink-0 z-20">
+  <div class="flex items-center gap-2.5">
+    <span class="text-2xl leading-none">&#x1F916;</span>
+    <div>
+      <div class="text-cyan-400 font-bold text-sm leading-none tracking-tight">ROS2 Agent</div>
+      <div class="text-[10px] text-gray-600 mt-0.5">LLM-powered robot control</div>
+    </div>
+  </div>
+  <div class="w-px h-6 bg-[#1a2332] mx-1"></div>
+  <div class="flex items-center gap-2.5">
+    <span id="mode-badge" class="badge badge-mock">MOCK</span>
+    <span class="flex items-center gap-1.5">
+      <span id="status-dot" class="status-dot s-mock"></span>
+      <span id="status-text" class="text-xs text-gray-500">Connecting...</span>
+    </span>
+  </div>
+  <div class="flex-1"></div>
+  <span id="stats-text" class="text-[11px] text-gray-600 font-mono hidden sm:block"></span>
+  <div class="w-px h-6 bg-[#1a2332] mx-1"></div>
+  <button onclick="showSimPanel()" id="sim-toggle-btn"
+    class="hidden text-gray-500 hover:text-cyan-400 transition text-xs px-2.5 py-1.5
+           bg-[#0d1117] rounded border border-[#1a2332] hover:border-cyan-900 flex items-center gap-1.5">
+    &#x1F3AE; Sim
+  </button>
+  <button onclick="showInfoPanel()"
+    class="text-gray-600 hover:text-cyan-400 transition p-1.5 bg-[#0d1117] rounded border border-[#1a2332] hover:border-cyan-900" title="ROS 2 Info">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+    </svg>
+  </button>
+</header>
+
+<!-- Body -->
+<div class="flex flex-1 overflow-hidden">
+
+  <!-- Chat -->
+  <main class="flex flex-col flex-1 overflow-hidden min-w-0">
+    <div id="chat-box" class="flex-1 overflow-y-auto px-4 py-4 space-y-2.5">
+      <div class="msg-agent rounded-lg px-4 py-3 text-xs msg-fade">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-cyan-400 font-semibold">&#x1F916; ROS2 Agent</span>
+          <span class="text-gray-700 text-[10px]">v0.1.0 ready</span>
+        </div>
+        <div class="text-gray-400 leading-relaxed mb-2">Ask me anything about your ROS 2 robot in plain English.</div>
+        <div class="grid grid-cols-2 gap-1">
+          <span class="text-cyan-500/70 cursor-pointer hover:text-cyan-400 transition" onclick="fillInput(this)">- What topics are active?</span>
+          <span class="text-cyan-500/70 cursor-pointer hover:text-cyan-400 transition" onclick="fillInput(this)">- What is the battery level?</span>
+          <span class="text-cyan-500/70 cursor-pointer hover:text-cyan-400 transition" onclick="fillInput(this)">- Show recent error messages</span>
+          <span class="text-cyan-500/70 cursor-pointer hover:text-cyan-400 transition" onclick="fillInput(this)">- Navigate to (5, 5)</span>
+        </div>
+      </div>
+    </div>
+    <div class="border-t border-[#1a2332] bg-[#0a0f18] px-4 py-3 flex gap-2 flex-shrink-0">
+      <input id="msg-input" type="text" placeholder="Ask anything about your robot..."
+        class="flex-1 bg-[#0d1117] text-gray-200 rounded-lg px-4 py-2.5 text-sm
+               border border-[#1a2332] focus:outline-none focus:border-cyan-800 placeholder-gray-700 transition"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}" />
+      <button id="send-btn" onclick="sendMessage()"
+        class="bg-cyan-800 hover:bg-cyan-700 active:bg-cyan-900 text-white rounded-lg
+               px-5 py-2 text-sm font-medium transition disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2">
+        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+        Send
+      </button>
+      <button onclick="clearChat()"
+        class="text-gray-600 hover:text-gray-400 px-2 py-2 rounded border border-transparent hover:border-[#1a2332] transition" title="Clear chat">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+        </svg>
+      </button>
+    </div>
+  </main>
+
+  <!-- Simulation panel -->
+  <aside id="sim-panel" class="w-[500px] border-l border-[#1a2332] bg-[#080d15] flex-col flex-shrink-0 flex overflow-y-auto">
+    <!-- Header -->
+    <div class="px-3 py-2 border-b border-[#1a2332] flex items-center justify-between flex-shrink-0 bg-[#0a0f18] sticky top-0 z-10">
+      <div class="flex items-center gap-3">
+        <span class="text-xs font-semibold text-cyan-400 flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="3" stroke-width="2"/>
+            <path stroke-linecap="round" stroke-width="2" d="M12 2v3m0 14v3M2 12h3m14 0h3"/>
+          </svg>
+          Live Simulation
+        </span>
+        <span id="sim-status" class="text-[10px] text-gray-600 font-mono">connecting...</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button id="btn-scan" class="view-btn active" onclick="toggleScan(this)">Scan</button>
+        <button id="btn-grid" class="view-btn active" onclick="toggleGrid(this)">Grid</button>
+        <button id="btn-path" class="view-btn active" onclick="togglePath(this)">Path</button>
+        <div class="w-px h-4 bg-[#1a2332] mx-0.5"></div>
+        <button onclick="toggleSimPanel()" class="text-gray-600 hover:text-gray-400 text-xs p-1 rounded hover:bg-[#1a2332]">X</button>
+      </div>
+    </div>
+
+    <!-- Canvas -->
+    <div class="relative flex-shrink-0 px-3 pt-3 pb-1">
+      <canvas id="sim-canvas" width="468" height="468"
+        class="rounded-lg border border-[#1a2332] cursor-crosshair block w-full"
+        onclick="canvasClick(event)"
+        onmousemove="canvasMouseMove(event)"
+        onmouseleave="canvasMouseLeave()"></canvas>
+      <div id="canvas-coord" class="absolute bottom-4 left-5 text-[9px] text-[#2d4060] font-mono pointer-events-none"></div>
+      <div id="goal-toast"
+        class="hidden absolute top-5 left-1/2 -translate-x-1/2 z-20
+               bg-[#071828] border border-cyan-900 text-cyan-400 text-xs
+               rounded-lg px-3 py-1.5 pointer-events-none shadow-xl">Goal set</div>
+    </div>
+
+    <!-- Quick goals -->
+    <div class="px-3 pb-2 flex gap-1.5 flex-wrap flex-shrink-0 items-center">
+      <span class="text-[9px] text-gray-700 uppercase tracking-wider mr-0.5">Quick:</span>
+      <button class="qgoal" onclick="sendGoal(1.5,1.5)">Home</button>
+      <button class="qgoal" onclick="sendGoal(5,5)">Centre</button>
+      <button class="qgoal" onclick="sendGoal(8.5,8.5)">Far NE</button>
+      <button class="qgoal" onclick="sendGoal(8.5,1.5)">Far SE</button>
+      <button class="qgoal" onclick="sendGoal(1.5,8.5)">Far NW</button>
+    </div>
+
+    <!-- Telemetry -->
+    <div class="px-3 pb-2 border-t border-[#1a2332] pt-2 grid grid-cols-2 gap-2 flex-shrink-0">
+      <div class="tel-card col-span-2">
+        <div class="text-[9px] text-gray-600 uppercase tracking-widest mb-2">Position and Motion</div>
+        <div class="grid grid-cols-4 gap-2">
+          <div><div class="text-[9px] text-gray-600">X (m)</div><div id="tel-x" class="text-cyan-300 font-mono text-base leading-tight">--</div></div>
+          <div><div class="text-[9px] text-gray-600">Y (m)</div><div id="tel-y" class="text-cyan-300 font-mono text-base leading-tight">--</div></div>
+          <div><div class="text-[9px] text-gray-600">Heading</div><div id="tel-hdg" class="text-cyan-300 font-mono text-base leading-tight">--</div></div>
+          <div><div class="text-[9px] text-gray-600">omega</div><div id="tel-omega" class="text-cyan-300 font-mono text-base leading-tight">--</div></div>
+        </div>
+        <div class="mt-2.5">
+          <div class="flex justify-between text-[9px] text-gray-600 mb-1">
+            <span>Forward speed</span><span id="tel-vel" class="font-mono">0.00 m/s</span>
+          </div>
+          <div class="bg-[#1a2332] rounded-full h-1.5 overflow-hidden">
+            <div id="speed-bar" class="h-1.5 rounded-full transition-all duration-100" style="width:0%;background:var(--accent)"></div>
+          </div>
+        </div>
+      </div>
+      <div class="tel-card">
+        <div class="text-[9px] text-gray-600 uppercase tracking-widest mb-1.5">Battery</div>
+        <div id="tel-bat" class="text-2xl font-bold font-mono leading-none mb-2" style="color:var(--green)">--</div>
+        <div class="bg-[#1a2332] rounded-full h-2 overflow-hidden">
+          <div id="batt-bar" class="h-2 rounded-full transition-all duration-500" style="width:85%;background:var(--green)"></div>
+        </div>
+      </div>
+      <div class="tel-card">
+        <div class="text-[9px] text-gray-600 uppercase tracking-widest mb-1.5">Navigation</div>
+        <div id="tel-nav" class="text-xs font-mono nav-idle leading-snug">idle</div>
+        <div id="tel-dist" class="text-[10px] text-gray-600 mt-1 font-mono"></div>
+      </div>
+    </div>
+
+    <!-- Manual drive -->
+    <div class="px-3 py-2 border-t border-[#1a2332] flex-shrink-0">
+      <div class="text-[9px] text-gray-600 uppercase tracking-widest mb-2">Manual Drive</div>
+      <div class="flex gap-4 items-start">
+        <div class="flex flex-col items-center gap-1 flex-shrink-0">
+          <button class="dpad-btn" onmousedown="driveStart(0.45,0)" onmouseup="driveStop()" ontouchstart="driveStart(0.45,0)" ontouchend="driveStop()">&#x25B2;</button>
+          <div class="flex gap-1">
+            <button class="dpad-btn" onmousedown="driveStart(0,1.4)" onmouseup="driveStop()" ontouchstart="driveStart(0,1.4)" ontouchend="driveStop()">&#x25C4;</button>
+            <button class="dpad-btn dpad-stop" onmousedown="driveStop()" onmouseup="driveStop()">&#x25A0;</button>
+            <button class="dpad-btn" onmousedown="driveStart(0,-1.4)" onmouseup="driveStop()" ontouchstart="driveStart(0,-1.4)" ontouchend="driveStop()">&#x25BA;</button>
+          </div>
+          <button class="dpad-btn" onmousedown="driveStart(-0.45,0)" onmouseup="driveStop()" ontouchstart="driveStart(-0.45,0)" ontouchend="driveStop()">&#x25BC;</button>
+        </div>
+        <div class="hint-row flex-1 pt-1">
+          <div><span class="text-gray-500">W / Up</span> forward</div>
+          <div><span class="text-gray-500">S / Down</span> reverse</div>
+          <div><span class="text-gray-500">A / Left</span> turn left</div>
+          <div><span class="text-gray-500">D / Right</span> turn right</div>
+          <div><span class="text-gray-500">Space</span> stop</div>
+          <div class="mt-1 text-gray-700">Click canvas to navigate</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ROS Info panel -->
+  <aside id="info-panel" class="hidden w-60 border-l border-[#1a2332] bg-[#0a0f18] flex-col overflow-y-auto">
+    <div class="px-3 py-2.5 border-b border-[#1a2332] flex items-center justify-between sticky top-0 bg-[#0a0f18] z-10">
+      <span class="text-xs font-semibold text-cyan-400">ROS 2 Info</span>
+      <button onclick="hideInfoPanel()" class="text-gray-600 hover:text-gray-300 p-0.5 rounded hover:bg-[#1a2332]">X</button>
+    </div>
+    <div class="p-3 space-y-4 text-xs">
+      <div>
+        <div class="flex items-center justify-between text-[10px] text-gray-500 font-semibold mb-1.5 uppercase tracking-wide">
+          Nodes <button onclick="loadNodes()" class="text-cyan-700 hover:text-cyan-500 px-1.5 py-0.5 bg-[#0d1117] rounded border border-[#1a2332] hover:border-cyan-900 text-[10px]">refresh</button>
+        </div>
+        <div id="nodes-list" class="text-gray-600 italic text-[10px]">Click refresh</div>
+      </div>
+      <div>
+        <div class="flex items-center justify-between text-[10px] text-gray-500 font-semibold mb-1.5 uppercase tracking-wide">
+          Topics <button onclick="loadTopics()" class="text-cyan-700 hover:text-cyan-500 px-1.5 py-0.5 bg-[#0d1117] rounded border border-[#1a2332] hover:border-cyan-900 text-[10px]">refresh</button>
+        </div>
+        <input id="topic-filter" type="text" placeholder="filter..."
+          class="w-full bg-[#0d1117] border border-[#1a2332] rounded px-2 py-1 mb-1.5 text-[10px] text-gray-400 focus:outline-none focus:border-cyan-800 placeholder-gray-700"
+          oninput="filterTopics()" />
+        <div id="topics-list" class="text-gray-600 italic text-[10px]">Click refresh</div>
+      </div>
+      <div>
+        <div class="flex items-center justify-between text-[10px] text-gray-500 font-semibold mb-1.5 uppercase tracking-wide">
+          Services <button onclick="loadServices()" class="text-cyan-700 hover:text-cyan-500 px-1.5 py-0.5 bg-[#0d1117] rounded border border-[#1a2332] hover:border-cyan-900 text-[10px]">refresh</button>
+        </div>
+        <div id="services-list" class="text-gray-600 italic text-[10px]">Click refresh</div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+let sessionId = 'web-' + Math.random().toString(36).slice(2,9);
+let isStreaming = false;
+let allTopics = [];
+let showScan = true, showGrid = true, showPath = true;
+let simState = null, simWs = null, driveInterval = null, hoverCoord = null;
+
+async function pollStatus() {
+  try {
+    const d = await fetch('/ros/status').then(r=>r.json());
+    const dot = document.getElementById('status-dot');
+    const txt = document.getElementById('status-text');
+    const mode = document.getElementById('mode-badge');
+    const stats = document.getElementById('stats-text');
+    if (d.mock) {
+      dot.className='status-dot s-mock'; txt.textContent='Mock mode';
+      mode.textContent='MOCK'; mode.className='badge badge-mock';
+    } else {
+      dot.className='status-dot s-live'; txt.textContent='Live ROS 2';
+      mode.textContent='LIVE'; mode.className='badge badge-live';
+    }
+    stats.textContent=d.node_count+' nodes - '+d.topic_count+' topics'+(d.battery_pct!=null?' - '+d.battery_pct+'%':'');
+  } catch {
+    document.getElementById('status-text').textContent='API offline';
+    document.getElementById('status-dot').className='status-dot s-off';
+  }
+}
+pollStatus(); setInterval(pollStatus,10000);
+
+function fillInput(el) {
+  document.getElementById('msg-input').value = el.textContent.replace(/^[-\s]*/,'');
+  document.getElementById('msg-input').focus();
+}
+function ts() {
+  return new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function mdLight(text) {
+  return escHtml(text)
+    .replace(/\*\*(.+?)\*\*/g,'<strong class="text-white">$1</strong>')
+    .replace(/`([^`\n]+)`/g,'<code class="bg-[#1a2332] text-cyan-300 rounded px-1 text-[10px] font-mono">$1</code>')
+    .replace(/\n/g,'<br>');
+}
+function appendMsg(role, html) {
+  const box = document.getElementById('chat-box');
+  const div = document.createElement('div');
+  const isUser = role==='user';
+  div.className=(isUser?'msg-user':'msg-agent')+' rounded-lg px-4 py-3 text-xs msg-fade';
+  div.innerHTML='<div class="flex items-center gap-2 mb-1.5"><span class="'+(isUser?'text-green-400':'text-cyan-400')+' font-semibold">'+(isUser?'You':'Agent')+'</span><span class="text-gray-700 text-[9px] font-mono">'+ts()+'</span></div><div class="text-gray-300 leading-relaxed">'+html+'</div>';
+  box.appendChild(div); box.scrollTop=box.scrollHeight;
+  return div.querySelector('.text-gray-300');
+}
+function appendToolCall(name, args) {
+  const box = document.getElementById('chat-box');
+  const div = document.createElement('div');
+  div.className='tool-call rounded-lg px-3 py-1.5 text-[11px] font-mono msg-fade';
+  const a=Object.entries(args).map(([k,v])=>'<span class="text-gray-500">'+k+'=</span><span class="text-yellow-500/80">'+JSON.stringify(v)+'</span>').join('<span class="text-gray-600">, </span>');
+  div.innerHTML='<span class="text-green-500">+</span> <span class="text-green-400 font-semibold">'+name+'</span><span class="text-gray-600">(</span>'+a+'<span class="text-gray-600">)</span>';
+  box.appendChild(div); box.scrollTop=box.scrollHeight;
+}
+async function sendMessage() {
+  if(isStreaming) return;
+  const inp=document.getElementById('msg-input');
+  const msg=inp.value.trim(); if(!msg) return;
+  inp.value=''; inp.disabled=true;
+  document.getElementById('send-btn').disabled=true; isStreaming=true;
+  appendMsg('user',escHtml(msg));
+  const body=appendMsg('agent','<span class="spinner"></span>');
+  let buf='',first=true;
+  try {
+    const es=new EventSource('/chat/stream?message='+encodeURIComponent(msg)+'&session_id='+encodeURIComponent(sessionId));
+    es.onmessage=e=>{
+      const ev=JSON.parse(e.data);
+      if(ev.kind==='tool_call') appendToolCall(ev.data.name,ev.data.args||{});
+      else if(ev.kind==='text'){
+        if(first){body.innerHTML='';first=false;}
+        buf+=ev.data; body.innerHTML=mdLight(buf);
+        document.getElementById('chat-box').scrollTop=document.getElementById('chat-box').scrollHeight;
+      } else if(ev.kind==='done'||ev.kind==='error'){
+        es.close();
+        if(ev.kind==='error') body.innerHTML='<span class="text-red-400">Error: '+escHtml(ev.data)+'</span>';
+        doneSending();
+      }
+    };
+    es.onerror=()=>{es.close();if(first) body.innerHTML='<span class="text-red-400">Connection error</span>';doneSending();};
+  } catch(err){body.innerHTML='<span class="text-red-400">'+escHtml(err.message)+'</span>';doneSending();}
+}
+function doneSending(){
+  isStreaming=false;
+  const inp=document.getElementById('msg-input');
+  inp.disabled=false; document.getElementById('send-btn').disabled=false; inp.focus();
+}
+function clearChat(){document.getElementById('chat-box').innerHTML='';sessionId='web-'+Math.random().toString(36).slice(2,9);}
+
+function showInfoPanel(){const p=document.getElementById('info-panel');p.classList.remove('hidden');p.classList.add('flex');loadTopics();loadNodes();loadServices();}
+function hideInfoPanel(){const p=document.getElementById('info-panel');p.classList.add('hidden');p.classList.remove('flex');}
+async function loadNodes(){
+  const el=document.getElementById('nodes-list');el.innerHTML='<span class="spinner"></span>';
+  try{const d=await fetch('/ros/nodes').then(r=>r.json());el.innerHTML=d.nodes.map(n=>'<div class="py-0.5 text-gray-400 hover:text-cyan-300 cursor-pointer truncate" onclick="askAbout(\''+n+'\')" title="'+n+'">'+n+'</div>').join('')||'<span class="text-gray-600">None</span>';}catch{el.innerHTML='<span class="text-red-500">Failed</span>';}
+}
+async function loadTopics(){
+  const el=document.getElementById('topics-list');el.innerHTML='<span class="spinner"></span>';
+  try{const d=await fetch('/ros/topics').then(r=>r.json());allTopics=d.topics;renderTopics(allTopics);}catch{el.innerHTML='<span class="text-red-500">Failed</span>';}
+}
+function renderTopics(t){document.getElementById('topics-list').innerHTML=t.map(n=>'<div class="py-0.5 text-gray-400 hover:text-cyan-300 cursor-pointer truncate" onclick="askAbout(\''+n+'\')" title="'+n+'">'+n+'</div>').join('')||'<span class="text-gray-600">None</span>';}
+function filterTopics(){const q=document.getElementById('topic-filter').value.toLowerCase();renderTopics(q?allTopics.filter(t=>t.toLowerCase().includes(q)):allTopics);}
+async function loadServices(){
+  const el=document.getElementById('services-list');el.innerHTML='<span class="spinner"></span>';
+  try{const d=await fetch('/ros/services').then(r=>r.json());el.innerHTML=d.services.map(s=>'<div class="py-0.5 text-gray-400 truncate text-[10px]">'+s+'</div>').join('')||'<span class="text-gray-600">None</span>';}catch{el.innerHTML='<span class="text-red-500">Failed</span>';}
+}
+function askAbout(name){document.getElementById('msg-input').value='Tell me about '+name;document.getElementById('msg-input').focus();}
+
+function connectSimWs(){
+  const proto=location.protocol==='https:'?'wss':'ws';
+  simWs=new WebSocket(proto+'://'+location.host+'/ws/sim');
+  simWs.onopen=()=>{const el=document.getElementById('sim-status');el.textContent='live';el.style.color='#22c55e';};
+  simWs.onmessage=e=>{simState=JSON.parse(e.data);};
+  simWs.onclose=()=>{const el=document.getElementById('sim-status');el.textContent='reconnecting...';el.style.color='#374151';setTimeout(connectSimWs,2000);};
+  simWs.onerror=()=>simWs.close();
+}
+connectSimWs();
+
+const CS=468;
+function w2c(x,y,M){const sc=CS/M;return[x*sc,CS-y*sc];}
+
+function drawFrame(){
+  requestAnimationFrame(drawFrame);
+  const canvas=document.getElementById('sim-canvas');if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const s=simState;
+  if(!s){
+    ctx.fillStyle='#020812';ctx.fillRect(0,0,CS,CS);
+    ctx.fillStyle='#1a2332';ctx.font='12px monospace';ctx.textAlign='center';
+    ctx.fillText('Connecting to simulation...',CS/2,CS/2);return;
+  }
+  const M=s.map_size,sc=CS/M;
+
+  ctx.fillStyle='#020812';ctx.fillRect(0,0,CS,CS);
+
+  // Vignette
+  const vig=ctx.createRadialGradient(CS/2,CS/2,CS*0.3,CS/2,CS/2,CS*0.75);
+  vig.addColorStop(0,'transparent');vig.addColorStop(1,'rgba(0,0,0,0.35)');
+  ctx.fillStyle=vig;ctx.fillRect(0,0,CS,CS);
+
+  // Grid
+  if(showGrid){
+    ctx.lineWidth=1;
+    for(let i=1;i<M;i++){
+      ctx.strokeStyle=i%(M/2)===0?'rgba(255,255,255,0.04)':'rgba(255,255,255,0.018)';
+      const[px]=w2c(i,0,M);ctx.beginPath();ctx.moveTo(px,0);ctx.lineTo(px,CS);ctx.stroke();
+      const[,py]=w2c(0,i,M);ctx.beginPath();ctx.moveTo(0,py);ctx.lineTo(CS,py);ctx.stroke();
+    }
+    ctx.fillStyle='#1e3050';ctx.font='8px monospace';ctx.textAlign='center';
+    for(let i=1;i<M;i++){const[px]=w2c(i,0,M);ctx.fillText(i+'m',px,CS-3);}
+    ctx.textAlign='right';
+    for(let i=1;i<M;i++){const[,py]=w2c(0,i,M);ctx.fillText(i+'m',16,py+3);}
+  }
+
+  // Room walls
+  ctx.shadowColor='rgba(30,80,150,0.5)';ctx.shadowBlur=12;
+  ctx.strokeStyle='#1e3a5f';ctx.lineWidth=2.5;
+  ctx.strokeRect(1.25,1.25,CS-2.5,CS-2.5);ctx.shadowBlur=0;
+
+  // Obstacles
+  for(const[ox,oy,ow,oh]of s.obstacles){
+    const[px,py]=w2c(ox,oy+oh,M);const pw=ow*sc,ph=oh*sc;
+    ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(px+4,py+4,pw,ph);
+    const g=ctx.createLinearGradient(px,py,px,py+ph);
+    g.addColorStop(0,'#1e2e44');g.addColorStop(1,'#111c2a');
+    ctx.fillStyle=g;ctx.fillRect(px,py,pw,ph);
+    ctx.strokeStyle='#253550';ctx.lineWidth=1;ctx.strokeRect(px,py,pw,ph);
+    ctx.strokeStyle='rgba(80,130,200,0.12)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+pw,py);ctx.stroke();
+    ctx.strokeStyle='rgba(255,255,255,0.04)';ctx.lineWidth=1;
+    for(let d2=0;d2<pw;d2+=8){ctx.beginPath();ctx.moveTo(px+d2,py);ctx.lineTo(px+d2,py+3);ctx.stroke();}
+  }
+
+  // LiDAR scan polygon
+  if(showScan&&s.lidar&&s.lidar.length>0){
+    const n=s.lidar.length;
+    ctx.beginPath();
+    for(let i=0;i<n;i++){
+      const angle=s.theta+(2*Math.PI*i/n);const r=s.lidar[i];
+      const[epx,epy]=w2c(s.x+Math.cos(angle)*r,s.y+Math.sin(angle)*r,M);
+      if(i===0)ctx.moveTo(epx,epy);else ctx.lineTo(epx,epy);
+    }
+    ctx.closePath();
+    const sg=ctx.createRadialGradient(...w2c(s.x,s.y,M),0,...w2c(s.x,s.y,M),3*sc);
+    sg.addColorStop(0,'rgba(34,211,238,0.08)');sg.addColorStop(1,'rgba(34,211,238,0.02)');
+    ctx.fillStyle=sg;ctx.fill();
+    ctx.strokeStyle='rgba(34,211,238,0.18)';ctx.lineWidth=0.8;ctx.stroke();
+    for(let i=0;i<n;i++){
+      const r=s.lidar[i];if(r>=s.map_size*0.59)continue;
+      const angle=s.theta+(2*Math.PI*i/n);
+      const[epx,epy]=w2c(s.x+Math.cos(angle)*r,s.y+Math.sin(angle)*r,M);
+      const prox=1-Math.min(1,r/3.5);
+      ctx.fillStyle=prox>0.5?'rgba(249,115,22,'+(0.2+prox*0.7)+')':'rgba(34,211,238,'+(0.15+prox*0.6)+')';
+      ctx.beginPath();ctx.arc(epx,epy,1+prox*2,0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  // Path trail
+  if(showPath&&s.path&&s.path.length>1){
+    const len=s.path.length;
+    for(let i=1;i<len;i++){
+      const a=0.05+0.55*(i/len);
+      const[x1,y1]=w2c(s.path[i-1][0],s.path[i-1][1],M);
+      const[x2,y2]=w2c(s.path[i][0],s.path[i][1],M);
+      ctx.strokeStyle='rgba(34,197,94,'+a+')';ctx.lineWidth=1.8;
+      ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+    }
+  }
+
+  // Goal
+  if(s.goal_x!==null&&s.goal_y!==null&&(s.nav_active||s.nav_succeeded)){
+    const[gx,gy]=w2c(s.goal_x,s.goal_y,M);const t=Date.now()/700;
+    if(s.nav_active){
+      ctx.strokeStyle='rgba(249,115,22,0.07)';ctx.lineWidth=4;
+      ctx.beginPath();ctx.arc(gx,gy,18+6*Math.abs(Math.sin(t)),0,Math.PI*2);ctx.stroke();
+      ctx.strokeStyle='rgba(249,115,22,0.18)';ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(gx,gy,9,0,Math.PI*2);ctx.stroke();
+    }
+    ctx.strokeStyle=s.nav_succeeded?'#22c55e':'#f97316';ctx.lineWidth=2.5;
+    const d=7;
+    ctx.beginPath();ctx.moveTo(gx-d,gy);ctx.lineTo(gx+d,gy);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(gx,gy-d);ctx.lineTo(gx,gy+d);ctx.stroke();
+    ctx.fillStyle=s.nav_succeeded?'#22c55e':'#f97316';
+    ctx.font='8px monospace';ctx.textAlign='left';
+    ctx.fillText('('+s.goal_x.toFixed(1)+','+s.goal_y.toFixed(1)+')',gx+10,gy-5);
+    if(s.nav_active){
+      const[rx2,ry2]=w2c(s.x,s.y,M);
+      ctx.strokeStyle='rgba(249,115,22,0.12)';ctx.lineWidth=1;ctx.setLineDash([4,7]);
+      ctx.beginPath();ctx.moveTo(rx2,ry2);ctx.lineTo(gx,gy);ctx.stroke();ctx.setLineDash([]);
+    }
+  }
+
+  // Robot
+  const[rx,ry]=w2c(s.x,s.y,M);const rr=Math.max(7,0.22*sc);
+  const rGlow=ctx.createRadialGradient(rx,ry,0,rx,ry,rr*3);
+  rGlow.addColorStop(0,'rgba(14,165,233,0.3)');rGlow.addColorStop(1,'transparent');
+  ctx.fillStyle=rGlow;ctx.beginPath();ctx.arc(rx,ry,rr*3,0,Math.PI*2);ctx.fill();
+  ctx.save();ctx.translate(rx,ry);ctx.rotate(-s.theta);
+  ctx.fillStyle='#1e3a6e';
+  ctx.fillRect(rr*0.35,-rr*1.15,rr*0.85,rr*0.42);
+  ctx.fillRect(rr*0.35,rr*0.72,rr*0.85,rr*0.42);
+  ctx.fillRect(-rr*1.1,-rr*1.15,rr*0.7,rr*0.42);
+  ctx.fillRect(-rr*1.1,rr*0.72,rr*0.7,rr*0.42);
+  ctx.beginPath();ctx.arc(0,0,rr,0,Math.PI*2);
+  const bg2=ctx.createRadialGradient(-rr*0.3,-rr*0.3,0,0,0,rr);
+  bg2.addColorStop(0,'#38bdf8');bg2.addColorStop(1,'#0369a1');
+  ctx.fillStyle=bg2;ctx.fill();ctx.strokeStyle='#7dd3fc';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.fillStyle='#075985';ctx.beginPath();ctx.arc(0,0,rr*0.4,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#f0f9ff';ctx.beginPath();ctx.arc(rr*0.68,0,rr*0.22,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+
+  // Hover coord
+  if(hoverCoord) document.getElementById('canvas-coord').textContent='('+hoverCoord[0].toFixed(2)+', '+hoverCoord[1].toFixed(2)+') m';
+
+  // Compass
+  const cx2=CS-26,cy2=CS-26,cr=17;
+  ctx.fillStyle='rgba(8,13,21,0.82)';ctx.beginPath();ctx.arc(cx2,cy2,cr+2,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#1e3050';ctx.lineWidth=1;ctx.beginPath();ctx.arc(cx2,cy2,cr,0,Math.PI*2);ctx.stroke();
+  ctx.fillStyle='#2d4060';ctx.font='7px sans-serif';ctx.textAlign='center';
+  ctx.fillText('N',cx2,cy2-cr+8);ctx.fillText('S',cx2,cy2+cr-2);
+  ctx.save();ctx.translate(cx2,cy2);ctx.rotate(-s.theta);
+  ctx.strokeStyle='#ef4444';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(0,cr-5);ctx.lineTo(0,-cr+5);ctx.stroke();
+  ctx.fillStyle='#ef4444';ctx.beginPath();ctx.moveTo(0,-cr+5);ctx.lineTo(-2.5,2);ctx.lineTo(2.5,2);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#374151';ctx.beginPath();ctx.moveTo(0,cr-5);ctx.lineTo(-2.5,-2);ctx.lineTo(2.5,-2);ctx.closePath();ctx.fill();
+  ctx.restore();
+
+  // Scale bar
+  const bw=sc;
+  ctx.fillStyle='rgba(8,13,21,0.65)';ctx.fillRect(8,CS-18,bw+12,14);
+  ctx.fillStyle='#253550';ctx.fillRect(12,CS-13,bw,4);
+  ctx.fillStyle='#7dd3fc';ctx.fillRect(12,CS-13,bw/2,4);
+  ctx.fillStyle='#374151';ctx.font='8px monospace';ctx.textAlign='center';
+  ctx.fillText('1 m',12+bw/2,CS-5);
+
+  // Telemetry update
+  const hdgDeg=((s.theta*180/Math.PI)%360+360)%360;
+  document.getElementById('tel-x').textContent=s.x.toFixed(2);
+  document.getElementById('tel-y').textContent=s.y.toFixed(2);
+  document.getElementById('tel-hdg').textContent=hdgDeg.toFixed(1)+'deg';
+  document.getElementById('tel-omega').textContent=s.omega.toFixed(2);
+  document.getElementById('tel-vel').textContent=Math.abs(s.vx).toFixed(2)+' m/s';
+  document.getElementById('speed-bar').style.width=Math.min(100,Math.abs(s.vx)/0.55*100)+'%';
+  document.getElementById('speed-bar').style.background=s.vx<-0.05?'#f97316':'#22d3ee';
+  const bat=s.battery;
+  const bc=bat>50?'#22c55e':bat>20?'#eab308':'#ef4444';
+  document.getElementById('tel-bat').textContent=bat.toFixed(0)+'%';
+  document.getElementById('tel-bat').style.color=bc;
+  document.getElementById('batt-bar').style.width=bat+'%';
+  document.getElementById('batt-bar').style.background=bc;
+  const nav=document.getElementById('tel-nav');const dist=document.getElementById('tel-dist');
+  if(s.nav_active&&s.escaping){nav.textContent='escaping obstacle';nav.className='text-xs font-mono nav-escape';dist.textContent='';}
+  else if(s.nav_active){const d=Math.hypot(s.goal_x-s.x,s.goal_y-s.y);nav.textContent='to ('+s.goal_x.toFixed(1)+','+s.goal_y.toFixed(1)+')';nav.className='text-xs font-mono nav-moving';dist.textContent=d.toFixed(2)+' m remaining';}
+  else if(s.nav_succeeded){nav.textContent='arrived';nav.className='text-xs font-mono nav-done';dist.textContent='';}
+  else{nav.textContent='idle';nav.className='text-xs font-mono nav-idle';dist.textContent='';}
+}
+drawFrame();
+
+function _cc(e){
+  const c=document.getElementById('sim-canvas');const r=c.getBoundingClientRect();
+  const cx=(e.clientX-r.left)*(c.width/r.width);const cy=(e.clientY-r.top)*(c.height/r.height);
+  const M=simState?simState.map_size:10;
+  return[Math.max(.3,Math.min(M-.3,(cx/CS)*M)),Math.max(.3,Math.min(M-.3,((CS-cy)/CS)*M))];
+}
+async function canvasClick(e){const[gx,gy]=_cc(e);await sendGoal(gx,gy);}
+function canvasMouseMove(e){if(!simState)return;hoverCoord=_cc(e);}
+function canvasMouseLeave(){hoverCoord=null;document.getElementById('canvas-coord').textContent='';}
+async function sendGoal(gx,gy){
+  await fetch('/sim/goal?x='+parseFloat(gx).toFixed(3)+'&y='+parseFloat(gy).toFixed(3),{method:'POST'});
+  const t=document.getElementById('goal-toast');
+  t.textContent='Goal to ('+parseFloat(gx).toFixed(2)+', '+parseFloat(gy).toFixed(2)+')';
+  t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),1600);
+}
+
+function toggleScan(b){showScan=!showScan;b.classList.toggle('active',showScan);}
+function toggleGrid(b){showGrid=!showGrid;b.classList.toggle('active',showGrid);}
+function togglePath(b){showPath=!showPath;b.classList.toggle('active',showPath);}
+
+function driveStart(vx,omega){driveStop();sendDrive(vx,omega);driveInterval=setInterval(()=>sendDrive(vx,omega),120);}
+function driveStop(){if(driveInterval){clearInterval(driveInterval);driveInterval=null;}sendDrive(0,0);}
+async function sendDrive(vx,omega){try{await fetch('/sim/cmd_vel?vx='+vx+'&omega='+omega,{method:'POST'});}catch{}}
+
+const _kd={};
+document.addEventListener('keydown',e=>{
+  if(document.activeElement.tagName==='INPUT')return;
+  if(_kd[e.key])return;_kd[e.key]=true;
+  const m={'w':[0.45,0],'a':[0,1.4],'s':[-0.45,0],'d':[0,-1.4],'ArrowUp':[0.45,0],'ArrowLeft':[0,1.4],'ArrowDown':[-0.45,0],'ArrowRight':[0,-1.4],' ':[0,0]};
+  if(m[e.key]){const[v,w]=m[e.key];sendDrive(v,w);e.preventDefault();}
+});
+document.addEventListener('keyup',e=>{
+  delete _kd[e.key];
+  if(!Object.keys(_kd).some(k=>['w','a','s','d','ArrowUp','ArrowLeft','ArrowDown','ArrowRight'].includes(k)))sendDrive(0,0);
+});
+
+function toggleSimPanel(){document.getElementById('sim-panel').classList.add('hidden');document.getElementById('sim-panel').classList.remove('flex');document.getElementById('sim-toggle-btn').classList.remove('hidden');}
+function showSimPanel(){document.getElementById('sim-panel').classList.remove('hidden');document.getElementById('sim-panel').classList.add('flex');document.getElementById('sim-toggle-btn').classList.add('hidden');}
+</script>
+</body>
+</html>

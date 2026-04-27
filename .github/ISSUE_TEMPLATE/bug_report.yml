@@ -1,0 +1,74 @@
+name: Bug Report
+description: Something isn't working correctly
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please fill in as much detail as possible.
+
+  - type: input
+    id: version
+    attributes:
+      label: ros2-agent version
+      placeholder: "e.g. 0.1.0 (run: ros2-agent --version)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: llm-provider
+    attributes:
+      label: LLM Provider
+      options:
+        - OpenAI
+        - Anthropic
+        - Ollama
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ros-distro
+    attributes:
+      label: ROS 2 Distribution
+      options:
+        - Humble Hawksbill
+        - Iron Irwini
+        - Jazzy Jalisco
+        - Rolling
+        - Mock mode (no real ROS 2)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      placeholder: A clear description of what went wrong
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / error output
+      render: shell

@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  ros2-agent-web:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - ROS2_AGENT_LLM_PROVIDER=${ROS2_AGENT_LLM_PROVIDER:-openai}
+      - ROS2_AGENT_LLM_MODEL=${ROS2_AGENT_LLM_MODEL:-gpt-4o}
+      - ROS2_AGENT_OPENAI_API_KEY=${ROS2_AGENT_OPENAI_API_KEY:-}
+      - ROS2_AGENT_ANTHROPIC_API_KEY=${ROS2_AGENT_ANTHROPIC_API_KEY:-}
+      - ROS2_AGENT_MOCK_ROS2=${ROS2_AGENT_MOCK_ROS2:-true}
+      - ROS2_AGENT_ROS_DOMAIN_ID=${ROS2_AGENT_ROS_DOMAIN_ID:-0}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Ollama for local LLM (no API key needed)
+  # ollama:
+  #   image: ollama/ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+
+# volumes:
+#   ollama_data:
