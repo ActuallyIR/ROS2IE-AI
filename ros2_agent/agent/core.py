@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterator
+from typing import Any, Literal
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 
+from ros2_agent.agent.graph import build_agent_graph
 from ros2_agent.config.settings import Settings
 from ros2_agent.ros2.bridge import ROS2Bridge
 from ros2_agent.tools import get_all_tools
-from ros2_agent.agent.graph import build_agent_graph
-
 
 # ── LLM factory ───────────────────────────────────────────────────────────────
+
 
 def _build_llm(settings: Settings) -> BaseChatModel:
     """Instantiate the configured LLM."""
@@ -55,6 +57,7 @@ def _build_llm(settings: Settings) -> BaseChatModel:
 
 # ── StreamEvent dataclass ─────────────────────────────────────────────────────
 
+
 def _extract_text(content: str | list) -> str:
     """Extract plain text from an AIMessage content field.
 
@@ -86,6 +89,7 @@ class StreamEvent:
 
 
 # ── ROS2Agent ─────────────────────────────────────────────────────────────────
+
 
 class ROS2Agent:
     """High-level interface for interacting with ROS 2 via an LLM agent.
@@ -144,14 +148,15 @@ class ROS2Agent:
         - ``"done"``        — signals completion
         """
         tid = session_id or self._session_id
-        config = {
+        config: RunnableConfig = {
             "configurable": {"thread_id": tid},
             "recursion_limit": self.settings.max_iterations * 2,
         }
+        stream_mode: Literal["updates"] = "updates"
         input_state = {"messages": [HumanMessage(content=message)]}
 
-        for chunk in self.graph.stream(input_state, config=config, stream_mode="updates"):
-            for node_name, node_output in chunk.items():
+        for chunk in self.graph.stream(input_state, config=config, stream_mode=stream_mode):
+            for _node_name, node_output in chunk.items():
                 messages = node_output.get("messages", [])
                 for msg in messages:
                     if isinstance(msg, AIMessage):
@@ -183,14 +188,19 @@ class ROS2Agent:
     ) -> AsyncIterator[StreamEvent]:
         """Async version of :meth:`stream`."""
         tid = session_id or self._session_id
-        config = {
+        config: RunnableConfig = {
             "configurable": {"thread_id": tid},
             "recursion_limit": self.settings.max_iterations * 2,
         }
+        stream_mode: Literal["updates"] = "updates"
         input_state = {"messages": [HumanMessage(content=message)]}
 
-        async for chunk in self.graph.astream(input_state, config=config, stream_mode="updates"):
-            for node_name, node_output in chunk.items():
+        async for chunk in self.graph.astream(
+            input_state,
+            config=config,
+            stream_mode=stream_mode,
+        ):
+            for _node_name, node_output in chunk.items():
                 messages = node_output.get("messages", [])
                 for msg in messages:
                     if isinstance(msg, AIMessage):

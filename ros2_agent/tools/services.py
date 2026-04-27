@@ -29,7 +29,9 @@ def create_service_tools(bridge: ROS2Bridge) -> list:
             suffix = f" matching '{filter_str}'" if filter_str else ""
             return f"No services found{suffix}."
 
-        return f"Found {len(services)} service(s):\n" + "\n".join(f"  {s}" for s in sorted(services))
+        return f"Found {len(services)} service(s):\n" + "\n".join(
+            f"  {s}" for s in sorted(services)
+        )
 
     @tool
     def get_service_type(service_name: str) -> str:

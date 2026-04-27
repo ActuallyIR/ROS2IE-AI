@@ -5,8 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 
 @dataclass
@@ -61,7 +60,7 @@ class ROS2Bridge:
         """True when a `ros2` binary is reachable or mock mode is active."""
         return self._available or self.mock
 
-    def run(self, args: list[str], timeout: Optional[int] = None) -> CommandResult:
+    def run(self, args: list[str], timeout: int | None = None) -> CommandResult:
         """Execute `ros2 <args>` and return a :class:`CommandResult`.
 
         Args:
@@ -70,6 +69,7 @@ class ROS2Bridge:
         """
         if self.mock:
             from ros2_agent.ros2.mock import MockROS2
+
             return MockROS2.run(args)
 
         if not self._available:
@@ -124,6 +124,5 @@ class ROS2Bridge:
     def __repr__(self) -> str:
         mode = "mock" if self.mock else ("live" if self._available else "unavailable")
         return (
-            f"ROS2Bridge(domain_id={self.ros_domain_id}, "
-            f"distro={self.ros_distro!r}, mode={mode!r})"
+            f"ROS2Bridge(domain_id={self.ros_domain_id}, distro={self.ros_distro!r}, mode={mode!r})"
         )

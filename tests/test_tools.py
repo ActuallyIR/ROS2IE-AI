@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import pytest
-
-from ros2_agent.ros2.bridge import CommandResult, ROS2Bridge
-from ros2_agent.tools.topics import create_topic_tools
-from ros2_agent.tools.services import create_service_tools
+from ros2_agent.ros2.bridge import CommandResult
 from ros2_agent.tools.actions import create_action_tools
-from ros2_agent.tools.nodes import create_node_tools
-from ros2_agent.tools.params import create_param_tools
 from ros2_agent.tools.diagnostics import create_diagnostic_tools
 from ros2_agent.tools.launch import create_launch_tools
-
+from ros2_agent.tools.nodes import create_node_tools
+from ros2_agent.tools.params import create_param_tools
+from ros2_agent.tools.services import create_service_tools
+from ros2_agent.tools.topics import create_topic_tools
 
 # ── CommandResult ─────────────────────────────────────────────────────────────
+
 
 class TestCommandResult:
     def test_success_output(self):
@@ -32,6 +30,7 @@ class TestCommandResult:
 
 
 # ── ROS2Bridge ────────────────────────────────────────────────────────────────
+
 
 class TestROS2Bridge:
     def test_mock_mode_is_available(self, mock_bridge):
@@ -93,6 +92,7 @@ class TestROS2Bridge:
 
 # ── Topic Tools ───────────────────────────────────────────────────────────────
 
+
 class TestTopicTools:
     def test_list_topics_returns_topics(self, mock_bridge):
         tools = create_topic_tools(mock_bridge)
@@ -122,12 +122,14 @@ class TestTopicTools:
     def test_publish_to_topic(self, mock_bridge):
         tools = create_topic_tools(mock_bridge)
         pub_fn = next(t for t in tools if t.name == "publish_to_topic")
-        result = pub_fn.invoke({
-            "topic_name": "/cmd_vel",
-            "msg_type": "geometry_msgs/msg/Twist",
-            "message_yaml": "{linear: {x: 0.0}}",
-            "times": 1,
-        })
+        result = pub_fn.invoke(
+            {
+                "topic_name": "/cmd_vel",
+                "msg_type": "geometry_msgs/msg/Twist",
+                "message_yaml": "{linear: {x: 0.0}}",
+                "times": 1,
+            }
+        )
         assert "published" in result.lower() or "Successfully" in result
 
     def test_get_topic_hz(self, mock_bridge):
@@ -139,6 +141,7 @@ class TestTopicTools:
 
 # ── Service Tools ─────────────────────────────────────────────────────────────
 
+
 class TestServiceTools:
     def test_list_services(self, mock_bridge):
         tools = create_service_tools(mock_bridge)
@@ -149,15 +152,18 @@ class TestServiceTools:
     def test_call_service(self, mock_bridge):
         tools = create_service_tools(mock_bridge)
         fn = next(t for t in tools if t.name == "call_service")
-        result = fn.invoke({
-            "service_name": "/move_base/clear_costmaps",
-            "service_type": "std_srvs/srv/Empty",
-            "request_yaml": "{}",
-        })
+        result = fn.invoke(
+            {
+                "service_name": "/move_base/clear_costmaps",
+                "service_type": "std_srvs/srv/Empty",
+                "request_yaml": "{}",
+            }
+        )
         assert "success" in result.lower() or "response" in result.lower()
 
 
 # ── Action Tools ──────────────────────────────────────────────────────────────
+
 
 class TestActionTools:
     def test_list_actions(self, mock_bridge):
@@ -169,16 +175,19 @@ class TestActionTools:
     def test_send_action_goal(self, mock_bridge):
         tools = create_action_tools(mock_bridge)
         fn = next(t for t in tools if t.name == "send_action_goal")
-        result = fn.invoke({
-            "action_name": "/navigate_to_pose",
-            "action_type": "nav2_msgs/action/NavigateToPose",
-            "goal_yaml": "{}",
-            "feedback": False,
-        })
+        result = fn.invoke(
+            {
+                "action_name": "/navigate_to_pose",
+                "action_type": "nav2_msgs/action/NavigateToPose",
+                "goal_yaml": "{}",
+                "feedback": False,
+            }
+        )
         assert "SUCCEEDED" in result or "Goal" in result
 
 
 # ── Node Tools ────────────────────────────────────────────────────────────────
+
 
 class TestNodeTools:
     def test_list_nodes(self, mock_bridge):
@@ -196,6 +205,7 @@ class TestNodeTools:
 
 # ── Param Tools ───────────────────────────────────────────────────────────────
 
+
 class TestParamTools:
     def test_list_params(self, mock_bridge):
         tools = create_param_tools(mock_bridge)
@@ -206,21 +216,26 @@ class TestParamTools:
     def test_get_param(self, mock_bridge):
         tools = create_param_tools(mock_bridge)
         fn = next(t for t in tools if t.name == "get_param")
-        result = fn.invoke({"node_name": "/controller_server", "param_name": "controller_frequency"})
+        result = fn.invoke(
+            {"node_name": "/controller_server", "param_name": "controller_frequency"}
+        )
         assert "20" in result or "Value" in result
 
     def test_set_param(self, mock_bridge):
         tools = create_param_tools(mock_bridge)
         fn = next(t for t in tools if t.name == "set_param")
-        result = fn.invoke({
-            "node_name": "/controller_server",
-            "param_name": "controller_frequency",
-            "value": "25.0",
-        })
+        result = fn.invoke(
+            {
+                "node_name": "/controller_server",
+                "param_name": "controller_frequency",
+                "value": "25.0",
+            }
+        )
         assert "Set parameter" in result or "25" in result
 
 
 # ── Diagnostic Tools ──────────────────────────────────────────────────────────
+
 
 class TestDiagnosticTools:
     def test_run_ros_doctor(self, mock_bridge):
@@ -238,6 +253,7 @@ class TestDiagnosticTools:
 
 
 # ── Launch Tools ──────────────────────────────────────────────────────────────
+
 
 class TestLaunchTools:
     def test_list_packages(self, mock_bridge):
