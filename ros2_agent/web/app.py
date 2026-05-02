@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ros2_agent.agent.core import ROS2Agent
@@ -87,6 +88,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    if STATIC_DIR.exists():
+        fast_app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @fast_app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def root() -> str:

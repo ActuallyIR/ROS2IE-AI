@@ -6,8 +6,44 @@
   <title>ROS2 Agent - React Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { background: #020812; color: #e5e7eb; font-family: Inter, system-ui, -apple-system, sans-serif; }
-    .panel { background: #0a0f18; border: 1px solid #1a2332; border-radius: 10px; }
+    :root { --bg: #020812; --panel-bg: #0a0f18; --panel-border: #1a2332; --fg: #e5e7eb; }
+    .light-mode { --bg: #f0f4f8; --panel-bg: #ffffff; --panel-border: #d1d5db; --fg: #1e293b; }
+    body { background: var(--bg); color: var(--fg); font-family: Inter, system-ui, -apple-system, sans-serif; }
+    .panel { background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 10px; }
+    /* ── Light mode element overrides ───────────────────────────── */
+    .light-mode .bg-slate-800 { background-color: #e2e8f0 !important; }
+    .light-mode .bg-slate-700 { background-color: #cbd5e1 !important; }
+    .light-mode .hover\:bg-slate-700:hover { background-color: #cbd5e1 !important; }
+    .light-mode .hover\:bg-slate-600:hover { background-color: #cbd5e1 !important; }
+    .light-mode .border-slate-800 { border-color: #e2e8f0 !important; }
+    .light-mode .border-slate-700 { border-color: #d1d5db !important; }
+    .light-mode .text-gray-300 { color: #374151 !important; }
+    .light-mode .text-gray-400 { color: #4b5563 !important; }
+    .light-mode .text-gray-500 { color: #6b7280 !important; }
+    .light-mode .text-gray-600 { color: #9ca3af !important; }
+    .light-mode .text-cyan-300 { color: #0891b2 !important; }
+    .light-mode .text-yellow-300 { color: #b45309 !important; }
+    .light-mode .text-emerald-300 { color: #059669 !important; }
+    .light-mode .bg-cyan-700 { background-color: #0891b2 !important; }
+    .light-mode .hover\:bg-cyan-600:hover { background-color: #06b6d4 !important; }
+    .light-mode .bg-cyan-800 { background-color: #0e7490 !important; }
+    .light-mode .hover\:bg-cyan-700:hover { background-color: #0891b2 !important; }
+    .light-mode .bg-cyan-900 { background-color: #cffafe !important; }
+    .light-mode .text-cyan-100 { color: #0e7490 !important; }
+    .light-mode .bg-red-900 { background-color: #fca5a5 !important; }
+    .light-mode .hover\:bg-red-800:hover { background-color: #f87171 !important; }
+    .light-mode [class~="bg-[#0d1117]"] { background-color: #f8fafc !important; }
+    .light-mode [class~="bg-[#050b13]"] { background-color: #f1f5f9 !important; }
+    .light-mode [class~="bg-slate-900/50"] { background-color: rgba(241,245,249,0.6) !important; }
+    .light-mode [class~="bg-slate-900"] { background-color: #f1f5f9 !important; }
+    .light-mode [class~="bg-sky-950/40"] { background-color: rgba(186,230,255,0.5) !important; }
+    .light-mode [class~="border-sky-900"] { border-color: #7dd3fc !important; }
+    .light-mode [class~="bg-emerald-950/30"] { background-color: rgba(167,243,208,0.4) !important; }
+    .light-mode [class~="border-emerald-900"] { border-color: #6ee7b7 !important; }
+    .light-mode [class~="bg-amber-950/80"] { background-color: rgba(255,251,235,0.95) !important; }
+    .light-mode .border-amber-700 { border-color: #d97706 !important; }
+    .light-mode .text-amber-200 { color: #92400e !important; }
+    .light-mode [class~="bg-black/50"] { background-color: rgba(255,255,255,0.75) !important; color: #374151 !important; }
   </style>
 </head>
 <body class="h-screen overflow-hidden">
@@ -52,6 +88,8 @@
         { role: "agent", text: "Feature-complete React dashboard is ready. Ask me anything about your ROS 2 robot." }
       ]);
 
+      const [lightMode, setLightMode] = useState(() => localStorage.getItem("ros2-theme") === "light");
+
       const [showInfo, setShowInfo] = useState(false);
       const [showEvents, setShowEvents] = useState(false);
       const [showPalette, setShowPalette] = useState(false);
@@ -74,6 +112,7 @@
       const [policyRunStatus, setPolicyRunStatus] = useState("");
 
       const sessionId = useMemo(() => "web-" + Math.random().toString(36).slice(2, 9), []);
+      const lightModeRef = useRef(localStorage.getItem("ros2-theme") === "light");
       const scrollRef = useRef(null);
       const simCanvasRef = useRef(null);
       const threeMountRef = useRef(null);
@@ -120,6 +159,20 @@
       useEffect(() => {
         latestSimRef.current = sim;
       }, [sim]);
+
+      useEffect(() => {
+        lightModeRef.current = lightMode;
+      }, [lightMode]);
+
+      useEffect(() => {
+        localStorage.setItem("ros2-theme", lightMode ? "light" : "dark");
+        const ctx = threeCtxRef.current;
+        if (ctx && window.THREE) {
+          const THREE = window.THREE;
+          ctx.scene.background = new THREE.Color(lightMode ? 0xe8f0f7 : 0x060c14);
+          ctx.scene.fog = lightMode ? null : new THREE.Fog(0x060c14, 8, 25);
+        }
+      }, [lightMode]);
 
       useEffect(() => {
         if (!showInfo) return;
@@ -195,14 +248,14 @@
         const w2c = (x, y) => [x * scale, H - y * scale];
 
         ctx.clearRect(0, 0, W, H);
-        ctx.fillStyle = "#050b13";
+        ctx.fillStyle = lightMode ? "#f8fafc" : "#050b13";
         ctx.fillRect(0, 0, W, H);
 
         if (showGrid) {
           for (let i = 1; i < M; i++) {
             const [px] = w2c(i, 0);
             const [, py] = w2c(0, i);
-            ctx.strokeStyle = "rgba(255,255,255,0.06)";
+            ctx.strokeStyle = lightMode ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.06)";
             ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(W, py); ctx.stroke();
@@ -227,7 +280,7 @@
 
         (sim.obstacles || []).forEach(([ox, oy, ow, oh]) => {
           const [x, y] = w2c(ox, oy + oh);
-          ctx.fillStyle = "#1f2f47";
+          ctx.fillStyle = lightMode ? "#94a3b8" : "#1f2f47";
           ctx.fillRect(x, y, ow * scale, oh * scale);
         });
 
@@ -294,7 +347,7 @@
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(12, 0); ctx.stroke();
         ctx.restore();
-      }, [sim, occupancy, showGrid, showScan, showPath, showOcc]);
+      }, [sim, occupancy, showGrid, showScan, showPath, showOcc, lightMode]);
 
       useEffect(() => {
         if (viewMode !== "3d") return () => {};
@@ -334,8 +387,8 @@
           host.appendChild(renderer.domElement);
 
           const scene = new THREE.Scene();
-          scene.background = new THREE.Color(0x060c14);
-          scene.fog = new THREE.Fog(0x060c14, 8, 25);
+          scene.background = new THREE.Color(lightModeRef.current ? 0xe8f0f7 : 0x060c14);
+          scene.fog = lightModeRef.current ? null : new THREE.Fog(0x060c14, 8, 25);
 
           const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
           camera.position.set(7.8, 7.0, 8.8);
@@ -743,11 +796,11 @@
         const ctx = c.getContext("2d");
         const w = c.width;
         const h = c.height;
-        ctx.fillStyle = "#050b13";
+        ctx.fillStyle = lightMode ? "#f8fafc" : "#050b13";
         ctx.fillRect(0, 0, w, h);
         const data = (sim && sim.velocity_history) || [];
         if (data.length < 2) {
-          ctx.fillStyle = "#4b5563";
+          ctx.fillStyle = lightMode ? "#64748b" : "#4b5563";
           ctx.font = "11px monospace";
           ctx.fillText("No velocity samples yet", 8, 24);
           return;
@@ -762,7 +815,7 @@
           if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
         ctx.stroke();
-      }, [sim]);
+      }, [sim, lightMode]);
 
       useEffect(() => {
         if (!showOcc) return;
@@ -962,7 +1015,7 @@
       }
 
       return (
-        <div className="h-full flex flex-col">
+        <div className={"h-full flex flex-col" + (lightMode ? " light-mode" : "")}>
           <header className="panel m-3 mb-2 px-4 py-2.5 flex items-center gap-3">
             <div className="text-cyan-300 font-semibold">ROS2 Agent</div>
             <div className="text-xs text-gray-400">API: {status.status}</div>
@@ -974,6 +1027,7 @@
             <button className="text-xs px-2 py-1 bg-slate-800 rounded" onClick={() => setShowInfo((v) => !v)}>Info</button>
             <button className="text-xs px-2 py-1 bg-slate-800 rounded" onClick={() => setShowEvents((v) => !v)}>Events</button>
             <button className="text-xs px-2 py-1 bg-slate-800 rounded" onClick={() => setShowPalette(true)}>Cmd</button>
+            <button className="text-xs px-2 py-1 bg-slate-800 rounded" onClick={() => setLightMode((v) => !v)}>{lightMode ? "🌙 Dark" : "☀ Light"}</button>
           </header>
 
           <div className="flex-1 min-h-0 px-3 pb-3 flex gap-3">

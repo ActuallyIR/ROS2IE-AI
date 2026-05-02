@@ -16,6 +16,10 @@
   --glow-orange:0 0 12px rgba(251,146,60,.45);
   --glow-purple:0 0 12px rgba(167,139,250,.45);
 }
+body.light {
+  --bg:#f0f4f8;--panel:#ffffff;--card:#f8fafc;--border:#e2e8f0;--border2:#cbd5e1;
+  --text:#1e293b;--dim:#64748b;--dim2:#94a3b8;
+}
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
   font-family:'JetBrains Mono','Fira Code','Consolas',monospace;font-size:11px;line-height:1.4}
 
@@ -97,6 +101,7 @@ canvas{display:block}
   <span class="badge" id="mode-badge">MOCK</span>
   <span id="fps-badge">0 Hz</span>
   <span id="bat-hdr" style="font-size:11px;color:var(--green);min-width:70px;text-align:right">🔋 --.--%</span>
+  <button id="theme-btn" onclick="toggleTheme()" class="ctrl-btn" style="border-color:var(--dim2);color:var(--dim2);margin-left:4px">☀ Light</button>
 </header>
 
 <!-- ═══ PIPELINE COL ══════════════════════════════════════════════════════ -->
@@ -177,6 +182,8 @@ const OBSTACLES = [[2.0,1.5,1.2,0.4],[5.5,1.0,0.4,2.0],[1.5,4.5,2.0,0.4],
                    [6.5,3.5,1.2,1.2],[3.8,6.5,0.4,1.8],[7.0,7.0,1.5,0.4],
                    [0.5,7.5,0.4,1.5],[4.5,3.5,1.0,0.4]];
 
+let lightMode = localStorage.getItem('ros2-theme') === 'light';
+if (lightMode) { document.body.classList.add('light'); const _tb = document.getElementById('theme-btn'); if (_tb) _tb.textContent = '\ud83c\udf19 Dark'; }
 let d = null;          // latest telemetry snapshot
 let fpsCount = 0;
 let lastFpsTs = performance.now();
@@ -209,6 +216,14 @@ setInterval(() => {
   document.getElementById('fps-badge').textContent = hz + ' Hz';
   fpsCount = 0; lastFpsTs = now;
 }, 1000);
+
+function toggleTheme() {
+  lightMode = !lightMode;
+  document.body.classList.toggle('light', lightMode);
+  localStorage.setItem('ros2-theme', lightMode ? 'light' : 'dark');
+  const btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = lightMode ? '\ud83c\udf19 Dark' : '\u2600 Light';
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    UTILITY
@@ -392,7 +407,7 @@ function drawNode(ctx, scale, n, now) {
   }
 
   // Background
-  ctx.fillStyle = '#070e1c';
+  ctx.fillStyle = lightMode ? '#f0f4f8' : '#070e1c';
   ctx.beginPath();
   ctx.roundRect(sx, sy, sw, sh, R);
   ctx.fill();
@@ -417,16 +432,16 @@ function drawNode(ctx, scale, n, now) {
   ctx.fillText(n.title, sx + 9*scale, sy + 14*scale);
 
   // Sub-title
-  ctx.fillStyle = '#3d5570';
+  ctx.fillStyle = lightMode ? '#64748b' : '#3d5570';
   ctx.font = `${7.5*scale}px "JetBrains Mono",monospace`;
   ctx.fillText(n.sub, sx + 9*scale, sy + 24*scale);
 
   // Data lines
   const lines = nodeLines(n.id);
-  ctx.fillStyle = '#b0c8e8';
+  ctx.fillStyle = lightMode ? '#1e293b' : '#b0c8e8';
   ctx.font = `${8*scale}px "JetBrains Mono",monospace`;
   ctx.fillText(lines[0], sx + 9*scale, sy + 37*scale);
-  ctx.fillStyle = '#5a7090';
+  ctx.fillStyle = lightMode ? '#64748b' : '#5a7090';
   ctx.fillText(lines[1], sx + 9*scale, sy + 47*scale);
 
   ctx.restore();
@@ -494,7 +509,7 @@ function renderPipeline(now) {
   pctx.clearRect(0, 0, W, H);
 
   // Subtle background grid
-  pctx.strokeStyle = 'rgba(21,32,48,0.5)';
+  pctx.strokeStyle = lightMode ? 'rgba(0,0,0,0.06)' : 'rgba(21,32,48,0.5)';
   pctx.lineWidth = 0.5;
   for (let x=0; x<W; x+=20) { pctx.beginPath(); pctx.moveTo(x,0); pctx.lineTo(x,H); pctx.stroke(); }
   for (let y=0; y<H; y+=20) { pctx.beginPath(); pctx.moveTo(0,y); pctx.lineTo(W,y); pctx.stroke(); }
@@ -596,11 +611,11 @@ function renderMap() {
   const w2c = (x,y) => [ox + x*scale, oy + (MAP_SIZE - y)*scale];
 
   mctx.clearRect(0,0,W,H);
-  mctx.fillStyle = '#040b16';
+  mctx.fillStyle = lightMode ? '#f0f4f8' : '#040b16';
   mctx.fillRect(0,0,W,H);
 
   // Grid
-  mctx.strokeStyle = 'rgba(21,48,72,0.6)'; mctx.lineWidth = 0.8;
+  mctx.strokeStyle = lightMode ? 'rgba(0,0,0,0.1)' : 'rgba(21,48,72,0.6)'; mctx.lineWidth = 0.8;
   for (let i=0; i<=MAP_SIZE; i++) {
     const [px] = w2c(i, 0); const [,py] = w2c(0, i);
     mctx.beginPath(); mctx.moveTo(px, oy); mctx.lineTo(px, oy + MAP_SIZE*scale); mctx.stroke();
@@ -610,8 +625,8 @@ function renderMap() {
   // Obstacles
   OBSTACLES.forEach(([qx,qy,qw,qh]) => {
     const [bx,by] = w2c(qx, qy+qh);
-    mctx.fillStyle = '#162236';
-    mctx.strokeStyle = '#1e3550';
+    mctx.fillStyle = lightMode ? '#94a3b8' : '#162236';
+    mctx.strokeStyle = lightMode ? '#cbd5e1' : '#1e3550';
     mctx.lineWidth = 1;
     mctx.fillRect(bx, by, qw*scale, qh*scale);
     mctx.strokeRect(bx, by, qw*scale, qh*scale);
@@ -729,12 +744,12 @@ function renderMap() {
   // Status overlay bottom-left
   const status = d.escaping ? '⚠ ESCAPING' : d.nav_active ? '● NAVIGATING' : d.nav_succeeded ? '✓ ARRIVED' : '○ IDLE';
   const statusColor = d.escaping ? '#f87171' : d.nav_active ? '#4ade80' : d.nav_succeeded ? '#22d3ee' : '#5a7090';
-  mctx.fillStyle = 'rgba(4,12,24,0.75)';
+  mctx.fillStyle = lightMode ? 'rgba(255,255,255,0.85)' : 'rgba(4,12,24,0.75)';
   mctx.fillRect(ox+4, oy + MAP_SIZE*scale - 26, 140, 20);
   mctx.fillStyle = statusColor;
   mctx.font = 'bold 10px monospace';
   mctx.fillText(status, ox+8, oy + MAP_SIZE*scale - 12);
-  mctx.fillStyle = '#5a7090';
+  mctx.fillStyle = lightMode ? '#64748b' : '#5a7090';
   mctx.font = '9px monospace';
   mctx.fillText(`(${fmtN(d.x,3)}, ${fmtN(d.y,3)}) θ=${fmtN(d.theta*180/Math.PI,1)}°`, ox+4, oy+16);
 }
@@ -754,7 +769,7 @@ function renderLidar() {
   const scale = (Math.min(W,H)/2 - 10) / maxR;
 
   // Fade background (creates persistence effect)
-  lctx.fillStyle = 'rgba(4,11,22,0.35)';
+  lctx.fillStyle = lightMode ? 'rgba(240,244,248,0.4)' : 'rgba(4,11,22,0.35)';
   lctx.fillRect(0,0,W,H);
 
   // Range rings
@@ -846,11 +861,11 @@ const cctx = CC.getContext('2d');
 function renderCamera() {
   const W = CC.width, H = CC.height;
   cctx.clearRect(0,0,W,H);
-  cctx.fillStyle = '#04080f';
+  cctx.fillStyle = lightMode ? '#f0f4f8' : '#04080f';
   cctx.fillRect(0,0,W,H);
 
   if (!d || !d.camera_depth_row || !d.camera_depth_row.length) {
-    cctx.fillStyle = '#3d5570';
+    cctx.fillStyle = lightMode ? '#64748b' : '#3d5570';
     cctx.font = '9px monospace';
     cctx.fillText('no depth frame', 8, H/2+3);
     return;
