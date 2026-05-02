@@ -26,8 +26,8 @@ if TYPE_CHECKING:
 
 # ── Map definition (10 m × 10 m room) ────────────────────────────────────────
 
-MAP_SIZE: float = 10.0          # metres, square room
-ROBOT_RADIUS: float = 0.22      # metres
+MAP_SIZE: float = 10.0  # metres, square room
+ROBOT_RADIUS: float = 0.22  # metres
 
 # Obstacles as (x, y, width, height) in metres
 OBSTACLES: list[tuple[float, float, float, float]] = [
@@ -43,14 +43,15 @@ OBSTACLES: list[tuple[float, float, float, float]] = [
 
 # ── State dataclass ───────────────────────────────────────────────────────────
 
+
 @dataclass
 class RobotState:
     x: float = 1.5
     y: float = 1.5
-    theta: float = 0.0          # radians, CCW from +X
-    vx: float = 0.0             # m/s forward
-    omega: float = 0.0          # rad/s angular
-    battery: float = 85.0       # percent
+    theta: float = 0.0  # radians, CCW from +X
+    vx: float = 0.0  # m/s forward
+    omega: float = 0.0  # rad/s angular
+    battery: float = 85.0  # percent
     goal_x: float | None = None
     goal_y: float | None = None
     goal_id: int | None = None
@@ -64,18 +65,27 @@ class RobotState:
     waypoint_index: int = 0
     velocity_history: list[float] = field(default_factory=list)
     occupancy_grid: list[list[float]] = field(default_factory=list)
+    # Camera / detection
+    camera_detections: list[dict] = field(default_factory=list)
+    camera_depth_row: list[float] = field(default_factory=list)
+    # SLAM
+    slam_covariance: float = 0.02  # metres² positional uncertainty
+    slam_map_cells_seen: int = 0
+    # Timing (seconds, measured each tick)
+    timing: dict = field(default_factory=dict)
 
 
 # ── Simulator ─────────────────────────────────────────────────────────────────
 
+
 class RobotSim:
     """Async differential-drive robot simulation."""
 
-    DT: float = 0.05            # seconds per tick (20 Hz)
-    LIDAR_RAYS: int = 90         # 90 rays ≈ realistic budget RPLIDAR
-    LIDAR_MAX: float = 6.0      # metres
-    NAV_K_ANGLE: float = 2.5    # P-gain for heading error
-    NAV_K_SPEED: float = 0.55   # max forward speed
+    DT: float = 0.05  # seconds per tick (20 Hz)
+    LIDAR_RAYS: int = 90  # 90 rays ≈ realistic budget RPLIDAR
+    LIDAR_MAX: float = 6.0  # metres
+    NAV_K_ANGLE: float = 2.5  # P-gain for heading error
+    NAV_K_SPEED: float = 0.55  # max forward speed
     GOAL_TOLERANCE: float = 0.20
 
     # Motor dynamics (acceleration limits — makes motion feel physical)
@@ -89,10 +99,10 @@ class RobotSim:
     _LIDAR_DROPOUT_PROB: float = 0.012  # probability of a ray returning max range (glass/dropout)
 
     # Obstacle avoidance
-    _FRONT_HALF_ANGLE: float = math.pi / 3   # ±60° cone treated as "front"
-    _DANGER_DIST: float = 0.55               # slow down below this clearance
-    _ESCAPE_TICKS: int = 60                  # ticks to run escape manoeuvre (~3 s)
-    _STUCK_TICKS: int = 25                   # ticks without movement = stuck (~1.25 s)
+    _FRONT_HALF_ANGLE: float = math.pi / 3  # ±60° cone treated as "front"
+    _DANGER_DIST: float = 0.55  # slow down below this clearance
+    _ESCAPE_TICKS: int = 60  # ticks to run escape manoeuvre (~3 s)
+    _STUCK_TICKS: int = 25  # ticks without movement = stuck (~1.25 s)
 
     # Realism knobs
     _CONTROL_LATENCY_S: float = 0.09         # command transport+controller latency
@@ -120,13 +130,13 @@ class RobotSim:
         self._robot_visual_style: dict = {}
 
         # Escape / stuck tracking
-        self._escape_countdown: int = 0       # ticks remaining in escape mode
-        self._escape_omega: float = 1.5       # direction of escape turn
-        self._escape_phase: int = 0           # 0=turn, 1=forward-slide past obstacle
-        self._no_move_ticks: int = 0          # consecutive ticks with near-zero movement
+        self._escape_countdown: int = 0  # ticks remaining in escape mode
+        self._escape_omega: float = 1.5  # direction of escape turn
+        self._escape_phase: int = 0  # 0=turn, 1=forward-slide past obstacle
+        self._no_move_ticks: int = 0  # consecutive ticks with near-zero movement
         self._last_x: float = self.state.x
         self._last_y: float = self.state.y
-        self._consec_escapes: int = 0         # how many escapes from same spot
+        self._consec_escapes: int = 0  # how many escapes from same spot
 
         # Event log
         self._events: list[dict] = []
@@ -364,6 +374,7 @@ class RobotSim:
             # If stuck many times in a row, randomise direction
             if self._consec_escapes % 3 == 0:
                 import random
+
                 self._escape_omega = random.choice([-1.5, 1.5])
             else:
                 self._escape_omega = self._lidar_clear_omega(s)
@@ -374,7 +385,7 @@ class RobotSim:
             #   Phase 0 (first half): back up hard while turning toward clear space
             #   Phase 1 (second half): slide forward in that direction to clear the obstacle
             self._escape_countdown -= 1
-            phase_boundary = self._ESCAPE_TICKS // 3   # switch to phase-1 after 1/3
+            phase_boundary = self._ESCAPE_TICKS // 3  # switch to phase-1 after 1/3
             if self._escape_countdown > (self._ESCAPE_TICKS - phase_boundary):
                 # Phase 0: reverse + turn
                 self._cmd_vx = -0.25
@@ -386,7 +397,7 @@ class RobotSim:
                     self._escape_phase = 1
                     self._escape_omega = self._lidar_clear_omega(s)
                 self._cmd_vx = 0.22
-                self._cmd_omega = self._escape_omega * 0.5   # gentle curve, not full turn
+                self._cmd_omega = self._escape_omega * 0.5  # gentle curve, not full turn
 
         elif s.nav_active and s.goal_x is not None and s.goal_y is not None:
             dx = s.goal_x - s.x
@@ -412,7 +423,9 @@ class RobotSim:
 
                 # Adaptive speed: slow near obstacles and when misaligned
                 front_clear = self._front_clearance(s)
-                obstacle_factor = min(1.0, max(0.0, (front_clear - ROBOT_RADIUS) / self._DANGER_DIST))
+                obstacle_factor = min(
+                    1.0, max(0.0, (front_clear - ROBOT_RADIUS) / self._DANGER_DIST)
+                )
                 alignment = 1.0 - min(1.0, abs(angle_err) / (math.pi / 3))
                 self._cmd_vx = self.NAV_K_SPEED * alignment * obstacle_factor * min(1.0, dist * 0.8)
 
@@ -471,6 +484,7 @@ class RobotSim:
                 self._escape_phase = 0
                 if self._consec_escapes % 3 == 0:
                     import random
+
                     self._escape_omega = random.choice([-1.5, 1.5])
                 else:
                     self._escape_omega = self._lidar_clear_omega(s)
@@ -502,10 +516,213 @@ class RobotSim:
         s.battery = max(0.0, s.battery - 0.0008 * (abs(s.vx) + 0.3 * abs(s.omega)) * dt)
 
         # ── LiDAR scan ────────────────────────────────────────────────────
+        t_lidar0 = time.perf_counter()
         s.lidar = self._cast_lidar()
+        t_lidar1 = time.perf_counter()
+
+        # ── Camera simulation ─────────────────────────────────────────
+        t_cam0 = time.perf_counter()
+        s.camera_detections, s.camera_depth_row = self._simulate_camera(s)
+        t_cam1 = time.perf_counter()
+
+        # ── SLAM update ───────────────────────────────────────────────
+        t_slam0 = time.perf_counter()
+        self._update_slam_covariance(s)
+        t_slam1 = time.perf_counter()
+
+        s.timing = {
+            "lidar_ms": round((t_lidar1 - t_lidar0) * 1000, 3),
+            "camera_ms": round((t_cam1 - t_cam0) * 1000, 3),
+            "slam_ms": round((t_slam1 - t_slam0) * 1000, 3),
+        }
         s.timestamp = time.time()
 
+    # ── Camera simulation ─────────────────────────────────────────────────────
+
+    # Horizontal FOV: 69° (typical RGB-D camera), 64 pixels wide virtual sensor
+    _CAM_FOV_DEG: float = 69.0
+    _CAM_WIDTH: int = 64
+    _CAM_DETECTION_THRESH: float = 2.5   # metres — objects closer than this are "detected"
+    _CAM_NOISE_SIGMA: float = 0.04       # depth noise σ
+
+    def _simulate_camera(self, s: "RobotState") -> "tuple[list[dict], list[float]]":
+        """Simulate an RGB-D camera using front-sector LiDAR rays.
+
+        Returns
+        -------
+        detections : list[dict]
+            Each entry: {label, confidence, distance_m, pixel_x, pixel_y, bbox_w, bbox_h}
+        depth_row : list[float]
+            Per-pixel depth (metres), CAM_WIDTH pixels wide.
+        """
+        import random as _rng
+
+        if not s.lidar:
+            return [], []
+
+        n = len(s.lidar)
+        fov_rad = math.radians(self._CAM_FOV_DEG)
+        half_fov = fov_rad / 2.0
+
+        # Sample LiDAR rays that fall inside the camera FOV
+        depth_row: list[float] = []
+        for px in range(self._CAM_WIDTH):
+            # Map pixel column to angle offset
+            ray_angle_off = -half_fov + fov_rad * (px / (self._CAM_WIDTH - 1))
+            # Find the closest LiDAR ray index
+            best_i = int(round((ray_angle_off / (2 * math.pi)) * n)) % n
+            raw_depth = s.lidar[best_i]
+            # Add depth noise
+            noisy = raw_depth + _rng.gauss(0, self._CAM_NOISE_SIGMA)
+            depth_row.append(round(max(0.05, noisy), 3))
+
+        # Blob detection: contiguous columns closer than threshold → one detection
+        detections: list[dict] = []
+        in_blob = False
+        blob_start = 0
+        blob_depths: list[float] = []
+        for px, d in enumerate(depth_row):
+            is_close = d < self._CAM_DETECTION_THRESH
+            if is_close and not in_blob:
+                in_blob = True
+                blob_start = px
+                blob_depths = [d]
+            elif is_close and in_blob:
+                blob_depths.append(d)
+            elif not is_close and in_blob:
+                in_blob = False
+                self._make_detection(detections, blob_start, px - 1, blob_depths, s)
+                blob_depths = []
+        if in_blob:
+            self._make_detection(detections, blob_start, self._CAM_WIDTH - 1, blob_depths, s)
+
+        return detections, depth_row
+
+    def _make_detection(
+        self,
+        detections: list,
+        x0: int,
+        x1: int,
+        depths: list[float],
+        s: "RobotState",
+    ) -> None:
+        import random as _rng
+
+        cx = (x0 + x1) // 2
+        w = max(1, x1 - x0 + 1)
+        mean_d = sum(depths) / len(depths)
+        # Label heuristic: walls are very close to map edges, else obstacle
+        near_wall = (
+            s.x < 0.5 or s.x > MAP_SIZE - 0.5
+            or s.y < 0.5 or s.y > MAP_SIZE - 0.5
+        )
+        label = "wall" if near_wall else "obstacle"
+        confidence = round(min(0.99, 0.75 + (self._CAM_DETECTION_THRESH - mean_d) / self._CAM_DETECTION_THRESH * 0.24 + _rng.uniform(-0.03, 0.03)), 2)
+        detections.append({
+            "label": label,
+            "confidence": confidence,
+            "distance_m": round(mean_d, 3),
+            "pixel_x": cx,
+            "pixel_y": 12,    # camera is mounted ~12 px above centre row
+            "bbox_w": w,
+            "bbox_h": max(4, int(30 / max(0.3, mean_d))),
+        })
+
+    # ── SLAM covariance update ─────────────────────────────────────────────────
+
+    def _update_slam_covariance(self, s: "RobotState") -> None:
+        """Simple EKF-inspired covariance growth/shrink model.
+
+        Motion increases uncertainty; sharp corners (many close LiDAR hits)
+        reduce it (loop-closure proxy).  Covariance is bounded.
+        """
+        speed = abs(s.vx)
+        turn = abs(s.omega)
+        # Propagation noise proportional to motion
+        s.slam_covariance += (speed * 0.0003 + turn * 0.0001) * self.DT
+        # Observation update: many close lidar hits → good features → shrink cov
+        if s.lidar:
+            close_hits = sum(1 for r in s.lidar if r < 1.5)
+            feature_strength = close_hits / len(s.lidar)
+            s.slam_covariance *= max(0.90, 1.0 - feature_strength * 0.08)
+        # When escaping (lots of motion, poor geometry) → grow faster
+        if self._escape_countdown > 0:
+            s.slam_covariance += 0.002
+        # Clamp
+        s.slam_covariance = max(0.005, min(0.50, s.slam_covariance))
+        # Count explored cells
+        s.slam_map_cells_seen = sum(
+            1 for row in s.occupancy_grid for c in row if c > 0.05
+        )
+
+    def get_slam_state(self) -> dict:
+        """Return a snapshot of SLAM-layer data."""
+        s = self.state
+        total_cells = 100 * 100
+        explored_pct = round(s.slam_map_cells_seen / total_cells * 100, 1)
+        return {
+            "pose_x": round(s.x, 4),
+            "pose_y": round(s.y, 4),
+            "pose_theta_deg": round(math.degrees(s.theta), 2),
+            "covariance_m2": round(s.slam_covariance, 5),
+            "position_uncertainty_cm": round(math.sqrt(s.slam_covariance) * 100, 2),
+            "map_cells_seen": s.slam_map_cells_seen,
+            "map_explored_pct": explored_pct,
+            "scan_match_quality": round(max(0.0, 1.0 - s.slam_covariance * 3), 2),
+        }
+
+    def get_joint_states(self) -> dict:
+        """Derive wheel joint states from differential-drive kinematics.
+
+        TurtleBot4 wheel radius  ≈ 0.0352 m
+        Track width (half)       ≈ 0.1168 m
+        """
+        s = self.state
+        wheel_radius = 0.0352
+        half_track = 0.1168
+        # Wheel angular velocities (rad/s) from diff-drive model
+        omega_left = (s.vx - half_track * s.omega) / wheel_radius
+        omega_right = (s.vx + half_track * s.omega) / wheel_radius
+        # Integrate to approximate joint positions (wraps at ±π)
+        return {
+            "wheel_left": {
+                "position_rad": round(math.atan2(math.sin(s.timestamp * omega_left % (2 * math.pi)), math.cos(s.timestamp * omega_left % (2 * math.pi))), 4),
+                "velocity_rad_s": round(omega_left, 4),
+                "effort_Nm": round(abs(omega_left) * 0.15, 4),
+            },
+            "wheel_right": {
+                "position_rad": round(math.atan2(math.sin(s.timestamp * omega_right % (2 * math.pi)), math.cos(s.timestamp * omega_right % (2 * math.pi))), 4),
+                "velocity_rad_s": round(omega_right, 4),
+                "effort_Nm": round(abs(omega_right) * 0.15, 4),
+            },
+        }
+
+    def get_imu_state(self) -> dict:
+        """Simulated IMU: orientation from theta, linear accel from velocity derivative."""
+        import random as _rng
+        s = self.state
+        qz = math.sin(s.theta / 2)
+        qw = math.cos(s.theta / 2)
+        # Linear accel approximation: centripetal + gravity noise
+        ax = -s.vx * s.omega + _rng.gauss(0, 0.008)
+        ay = s.omega * s.vx + _rng.gauss(0, 0.008)
+        az = 9.806 + _rng.gauss(0, 0.005)
+        return {
+            "orientation": {"x": 0.0, "y": 0.0, "z": round(qz, 5), "w": round(qw, 5)},
+            "angular_velocity": {
+                "x": round(_rng.gauss(0, 0.002), 6),
+                "y": round(_rng.gauss(0, 0.002), 6),
+                "z": round(s.omega + _rng.gauss(0, 0.003), 6),
+            },
+            "linear_acceleration": {
+                "x": round(ax, 6),
+                "y": round(ay, 6),
+                "z": round(az, 6),
+            },
+        }
+
     # ── Geometry helpers ──────────────────────────────────────────────────────
+
 
     def _front_clearance(self, s: RobotState) -> float:
         """Minimum LiDAR range in the forward ±60° cone."""
@@ -525,7 +742,7 @@ class RobotSim:
             return 1.5
         n = len(s.lidar)
         # Left half: rays 1..n//2, right half: rays n//2+1..n-1
-        left  = sum(s.lidar[i] for i in range(1, n // 2))
+        left = sum(s.lidar[i] for i in range(1, n // 2))
         right = sum(s.lidar[i] for i in range(n // 2 + 1, n))
         return 1.5 if left >= right else -1.5
 
@@ -535,9 +752,9 @@ class RobotSim:
             return 0.0
         n = len(s.lidar)
         # Rays in the ±90° lateral bands
-        left_rays  = [s.lidar[i] for i in range(n // 8, 3 * n // 8)]
+        left_rays = [s.lidar[i] for i in range(n // 8, 3 * n // 8)]
         right_rays = [s.lidar[i] for i in range(5 * n // 8, 7 * n // 8)]
-        l_min = min(left_rays)  if left_rays  else self.LIDAR_MAX
+        l_min = min(left_rays) if left_rays else self.LIDAR_MAX
         r_min = min(right_rays) if right_rays else self.LIDAR_MAX
         threshold = 0.45
         if l_min < threshold or r_min < threshold:
@@ -547,7 +764,7 @@ class RobotSim:
 
     def _collides(self, x: float, y: float) -> bool:
         r = ROBOT_RADIUS
-        for (ox, oy, w, h) in OBSTACLES:
+        for ox, oy, w, h in OBSTACLES:
             if (ox - r) <= x <= (ox + w + r) and (oy - r) <= y <= (oy + h + r):
                 return True
         return False
@@ -555,9 +772,10 @@ class RobotSim:
     def _cast_lidar(self) -> list[float]:
         """Cast LIDAR_RAYS rays from current position, return ranges with sensor noise."""
         import random
+
         s = self.state
         ranges: list[float] = []
-        step = 0.04          # ray march step size (metres)
+        step = 0.04  # ray march step size (metres)
         n_steps = int(self.LIDAR_MAX / step)
 
         for i in range(self.LIDAR_RAYS):
@@ -582,7 +800,7 @@ class RobotSim:
                     break
 
                 # Obstacles
-                for (ox, oy, w, h) in OBSTACLES:
+                for ox, oy, w, h in OBSTACLES:
                     if ox <= px <= ox + w and oy <= py <= oy + h:
                         hit = j * step
                         break
@@ -768,6 +986,7 @@ def get_sim() -> RobotSim:
 
 
 # ── Utility ───────────────────────────────────────────────────────────────────
+
 
 def _angle_diff(a: float, b: float) -> float:
     """Signed angle difference, result in [-pi, pi]."""

@@ -26,7 +26,11 @@ def create_launch_tools(bridge: ROS2Bridge) -> list:
             pkgs = [p for p in pkgs if filter_str.lower() in p.lower()]
 
         if not pkgs:
-            return f"No packages found matching '{filter_str}'." if filter_str else "No packages found."
+            return (
+                f"No packages found matching '{filter_str}'."
+                if filter_str
+                else "No packages found."
+            )
 
         return f"Found {len(pkgs)} package(s):\n" + "\n".join(f"  {p}" for p in sorted(pkgs))
 

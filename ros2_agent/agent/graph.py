@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import SystemMessage
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import END, MessagesState, StateGraph
+from langgraph.graph import MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 if TYPE_CHECKING:
@@ -44,12 +44,12 @@ Current configuration:
 
 
 def build_agent_graph(
-    llm: "BaseChatModel",
+    llm: BaseChatModel,
     tools: list,
     ros_domain_id: int = 0,
     ros_distro: str = "humble",
     mock: bool = False,
-) -> "CompiledStateGraph":
+) -> CompiledStateGraph:
     """Compile and return the LangGraph ReAct agent graph.
 
     The graph follows the standard pattern:

@@ -22,6 +22,7 @@ STATIC_DIR = pathlib.Path(__file__).parent / "static"
 
 # ── Request / response models ─────────────────────────────────────────────────
 
+
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "web-default"
@@ -59,6 +60,7 @@ class UniversalProfileRequest(BaseModel):
 
 # ── App factory ───────────────────────────────────────────────────────────────
 
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     agent = ROS2Agent(settings)
@@ -92,6 +94,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if index_path.exists():
             return index_path.read_text(encoding="utf-8")
         return "<h1>ROS2 Agent Web UI</h1><p>Static files not found.</p>"
+
+    @fast_app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+    async def dashboard() -> str:
+        """Live end-to-end data flow dashboard."""
+        dash_path = STATIC_DIR / "dashboard.html"
+        if dash_path.exists():
+            return dash_path.read_text(encoding="utf-8")
+        return "<h1>Dashboard not found</h1>"
 
     @fast_app.get("/health")
     async def health() -> dict:
@@ -186,10 +196,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except (WebSocketDisconnect, Exception):
             pass
 
+    @fast_app.websocket("/ws/telemetry")
+    async def ws_telemetry(websocket: WebSocket) -> None:
+        """Stream full sensor telemetry (all layers) at 20 Hz over WebSocket."""
+        await websocket.accept()
+        try:
+            while True:
+                await asyncio.sleep(0.05)  # 20 Hz
+                state = sim.get_state_dict()
+                # Commanded velocities (before motor model)
+                state["cmd_vx"] = round(sim._cmd_vx, 4)
+                state["cmd_omega"] = round(sim._cmd_omega, 4)
+                state["manual_override"] = sim._manual_override
+                state["escape_countdown"] = sim._escape_countdown
+                state["no_move_ticks"] = sim._no_move_ticks
+                # Camera sensor data
+                state["camera_detections"] = sim.state.camera_detections
+                state["camera_depth_row"] = sim.state.camera_depth_row
+                # Per-tick processing times
+                state["timing"] = sim.state.timing
+                # SLAM state
+                state["slam"] = sim.get_slam_state()
+                # Joint states (differential-drive kinematics)
+                state["joints"] = sim.get_joint_states()
+                # IMU state
+                state["imu"] = sim.get_imu_state()
+                await websocket.send_json(state)
+        except (WebSocketDisconnect, Exception):
+            pass
+
     @fast_app.post("/sim/goal")
     async def sim_goal(x: float, y: float) -> dict:
         """Directly set a navigation goal without going through the LLM."""
         import random as _r
+
         sim.set_goal(x, y, goal_id=_r.randint(100000, 999999))
         return {"ok": True, "goal_x": x, "goal_y": y}
 

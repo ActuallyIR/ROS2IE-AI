@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ROS2 Robot — Live Data Flow Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#030810;--panel:#070d1a;--card:#0a1220;--border:#152030;--border2:#1e3048;
+  --text:#c8d8f0;--dim:#3d5570;--dim2:#5a7090;
+  --cyan:#22d3ee;--orange:#fb923c;--green:#4ade80;--purple:#a78bfa;
+  --red:#f87171;--yellow:#fbbf24;--blue:#60a5fa;--teal:#2dd4bf;
+  --glow-cyan:0 0 12px rgba(34,211,238,.45);
+  --glow-green:0 0 12px rgba(74,222,128,.45);
+  --glow-orange:0 0 12px rgba(251,146,60,.45);
+  --glow-purple:0 0 12px rgba(167,139,250,.45);
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:'JetBrains Mono','Fira Code','Consolas',monospace;font-size:11px;line-height:1.4}
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+#app{display:grid;height:100vh;
+  grid-template-areas:"hdr hdr hdr" "pipe map sens" "bar bar bar";
+  grid-template-columns:370px 1fr 355px;
+  grid-template-rows:44px 1fr 96px;
+  gap:5px;padding:5px}
+
+#hdr{grid-area:hdr;display:flex;align-items:center;gap:10px;padding:0 12px;
+  background:var(--panel);border:1px solid var(--border2);border-radius:8px}
+#pipe-col{grid-area:pipe;background:var(--panel);border:1px solid var(--border2);
+  border-radius:8px;display:flex;flex-direction:column;overflow:hidden}
+#map-col{grid-area:map;background:var(--panel);border:1px solid var(--border2);
+  border-radius:8px;display:flex;flex-direction:column;overflow:hidden}
+#sens-col{grid-area:sens;background:var(--panel);border:1px solid var(--border2);
+  border-radius:8px;display:flex;flex-direction:column;gap:4px;padding:4px;overflow:hidden}
+#metrics-bar{grid-area:bar;background:var(--panel);border:1px solid var(--border2);
+  border-radius:8px;display:flex;gap:0;overflow:hidden}
+
+/* ── Shared panel pieces ─────────────────────────────────────────────────── */
+.col-hdr{padding:5px 10px;font-size:9px;font-weight:700;color:var(--dim2);
+  letter-spacing:.12em;text-transform:uppercase;border-bottom:1px solid var(--border);flex-shrink:0}
+.sub-panel{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:5px}
+.sub-title{font-size:9px;color:var(--dim2);letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px}
+canvas{display:block}
+
+/* ── Header badges ───────────────────────────────────────────────────────── */
+.badge{font-size:9px;padding:2px 7px;border-radius:4px;font-weight:700;letter-spacing:.05em}
+#ws-badge{background:#0a1a0a;color:#3d6b3d}
+#ws-badge.live{background:#0a2010;color:var(--green);box-shadow:0 0 8px rgba(74,222,128,.3)}
+#mode-badge{background:#100a28;color:var(--purple)}
+#fps-badge{color:var(--dim2);font-size:9px}
+
+/* ── Map controls ────────────────────────────────────────────────────────── */
+#map-inner{flex:1;display:flex;flex-direction:column;gap:4px;padding:4px;overflow:hidden}
+.ctrl-row{display:flex;gap:5px;align-items:center;flex-shrink:0;flex-wrap:wrap}
+.ctrl-btn{background:#0a1828;border:1px solid;padding:2px 9px;border-radius:4px;cursor:pointer;
+  font-family:inherit;font-size:10px;font-weight:700;letter-spacing:.05em;transition:opacity .15s}
+.ctrl-btn:hover{opacity:.8}
+.num-inp{width:46px;background:#07111e;border:1px solid var(--border2);color:var(--text);
+  padding:2px 4px;border-radius:4px;font-family:inherit;font-size:10px}
+
+/* ── Metrics bar cells ───────────────────────────────────────────────────── */
+.mg{flex:1;display:flex;flex-direction:column;gap:2px;padding:5px 8px;border-right:1px solid var(--border)}
+.mg:last-child{border-right:none}
+.mg-title{font-size:8px;font-weight:700;color:var(--dim2);letter-spacing:.12em;margin-bottom:2px}
+.mg-row{display:flex;align-items:baseline;gap:4px;white-space:nowrap}
+.mg-label{font-size:9px;color:var(--dim2);min-width:36px}
+.mg-val{font-size:10px;font-weight:700;color:var(--text);min-width:46px}
+.mg-bar{height:5px;border-radius:3px;background:var(--border);overflow:hidden;width:50px}
+.mg-bar-fill{height:100%;border-radius:3px;transition:width .15s}
+
+/* ── SLAM / detections ───────────────────────────────────────────────────── */
+.sm-row{display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;margin-bottom:2px}
+.sm-kv{display:flex;flex-direction:column}
+.sm-k{font-size:8px;color:var(--dim2)}
+.sm-v{font-size:10px;font-weight:700}
+.det-item{display:flex;gap:6px;padding:2px 4px;background:#040c16;border-radius:3px;
+  border-left:3px solid var(--orange);margin-bottom:2px}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ═══ HEADER ════════════════════════════════════════════════════════════ -->
+<header id="hdr">
+  <span style="font-size:17px">🤖</span>
+  <span style="font-weight:700;color:var(--cyan);font-size:13px">ROS2 ROBOT</span>
+  <span style="color:var(--dim2)">LIVE END-TO-END DATA FLOW</span>
+  <span style="flex:1"></span>
+  <span class="badge" id="ws-badge">⬤ CONNECTING</span>
+  <span class="badge" id="mode-badge">MOCK</span>
+  <span id="fps-badge">0 Hz</span>
+  <span id="bat-hdr" style="font-size:11px;color:var(--green);min-width:70px;text-align:right">🔋 --.--%</span>
+</header>
+
+<!-- ═══ PIPELINE COL ══════════════════════════════════════════════════════ -->
+<section id="pipe-col">
+  <div class="col-hdr">⟳ &nbsp;PROCESSING PIPELINE  ·  data flow</div>
+  <canvas id="pipeCanvas" style="flex:1;width:100%"></canvas>
+</section>
+
+<!-- ═══ MAP COL ═══════════════════════════════════════════════════════════ -->
+<section id="map-col">
+  <div class="col-hdr">🗺 &nbsp;LIVE MAP  ·  click to set goal  ·  WASD to drive</div>
+  <div id="map-inner">
+    <canvas id="mapCanvas" style="flex:1;border-radius:5px;cursor:crosshair"></canvas>
+    <div class="ctrl-row">
+      <span style="color:var(--dim2)">X</span>
+      <input class="num-inp" id="gx" type="number" min="0.5" max="9.5" step="0.5" value="7">
+      <span style="color:var(--dim2)">Y</span>
+      <input class="num-inp" id="gy" type="number" min="0.5" max="9.5" step="0.5" value="7">
+      <button class="ctrl-btn" style="border-color:var(--cyan);color:var(--cyan)" onclick="sendGoal()">SEND GOAL</button>
+      <button class="ctrl-btn" style="border-color:var(--orange);color:var(--orange)" onclick="sendTour()">▶ TOUR</button>
+      <button class="ctrl-btn" style="border-color:var(--dim);color:var(--dim)" onclick="resetSim()">↺ RESET</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SENSOR COL ════════════════════════════════════════════════════════ -->
+<section id="sens-col">
+  <div class="sub-panel" style="flex-shrink:0">
+    <div class="sub-title">◉ LIDAR  /scan  ·  90 rays  ·  6 m range</div>
+    <canvas id="lidarCanvas" style="width:100%;border-radius:4px"></canvas>
+  </div>
+  <div class="sub-panel" style="flex-shrink:0">
+    <div class="sub-title">📷 CAMERA  /camera/depth  ·  69° FOV  ·  64 px</div>
+    <canvas id="camCanvas" style="width:100%;border-radius:3px"></canvas>
+    <div id="det-list" style="margin-top:3px;max-height:52px;overflow-y:auto"></div>
+  </div>
+  <div class="sub-panel" style="flex:1;overflow-y:auto">
+    <div class="sub-title">🧭 SLAM + NAV STATE</div>
+    <div id="slam-grid" class="sm-row"></div>
+  </div>
+</section>
+
+<!-- ═══ METRICS BAR ═══════════════════════════════════════════════════════ -->
+<div id="metrics-bar">
+  <div class="mg" id="mg-motor">
+    <div class="mg-title">⚙ MOTOR</div>
+    <div id="mg-motor-body"></div>
+  </div>
+  <div class="mg" id="mg-joints">
+    <div class="mg-title">🔩 JOINTS</div>
+    <div id="mg-joints-body"></div>
+  </div>
+  <div class="mg" id="mg-imu">
+    <div class="mg-title">📐 IMU</div>
+    <div id="mg-imu-body"></div>
+  </div>
+  <div class="mg" id="mg-odom">
+    <div class="mg-title">📍 ODOMETRY</div>
+    <div id="mg-odom-body"></div>
+  </div>
+  <div class="mg" id="mg-timing">
+    <div class="mg-title">⏱ TIMING</div>
+    <div id="mg-timing-body"></div>
+  </div>
+</div>
+
+</div><!-- #app -->
+
+<script>
+'use strict';
+/* ═══════════════════════════════════════════════════════════════════════════
+   CONSTANTS & STATE
+═══════════════════════════════════════════════════════════════════════════ */
+const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/telemetry';
+const TOUR_WAYPOINTS = [[2.5,3.0],[7.5,2.0],[7.0,7.5],[3.0,7.5],[5.0,5.0],[1.5,1.5]];
+const MAP_SIZE = 10;
+const OBSTACLES = [[2.0,1.5,1.2,0.4],[5.5,1.0,0.4,2.0],[1.5,4.5,2.0,0.4],
+                   [6.5,3.5,1.2,1.2],[3.8,6.5,0.4,1.8],[7.0,7.0,1.5,0.4],
+                   [0.5,7.5,0.4,1.5],[4.5,3.5,1.0,0.4]];
+
+let d = null;          // latest telemetry snapshot
+let fpsCount = 0;
+let lastFpsTs = performance.now();
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WEBSOCKET
+═══════════════════════════════════════════════════════════════════════════ */
+let ws;
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => {
+    const b = document.getElementById('ws-badge');
+    b.textContent = '⬤ LIVE'; b.className = 'badge live';
+  };
+  ws.onclose = () => {
+    const b = document.getElementById('ws-badge');
+    b.textContent = '⬤ RECONNECTING'; b.className = 'badge';
+    setTimeout(connectWS, 1500);
+  };
+  ws.onmessage = e => {
+    try { d = JSON.parse(e.data); } catch { return; }
+    fpsCount++;
+  };
+}
+connectWS();
+
+setInterval(() => {
+  const now = performance.now();
+  const hz = Math.round(fpsCount / ((now - lastFpsTs) / 1000));
+  document.getElementById('fps-badge').textContent = hz + ' Hz';
+  fpsCount = 0; lastFpsTs = now;
+}, 1000);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   UTILITY
+═══════════════════════════════════════════════════════════════════════════ */
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const lerp  = (a, b, t) => a + (b - a) * t;
+const fmtN  = (v, d) => (v == null ? '--' : Number(v).toFixed(d));
+const col   = (css) => css; // pass-through, used for readability
+
+function hsvToRgb(h, s, v) {
+  const i = Math.floor(h * 6), f = h * 6 - i;
+  const p = v*(1-s), q = v*(1-f*s), t2 = v*(1-(1-f)*s);
+  const [r,g,b] = [[v,t2,p],[q,v,p],[p,v,t2],[p,q,v],[t2,p,v],[v,p,q]][i%6];
+  return `rgb(${r*255|0},${g*255|0},${b*255|0})`;
+}
+
+function barFill(el, frac, color) {
+  el.style.width = clamp(frac*100, 0, 100) + '%';
+  el.style.background = color;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PIPELINE CANVAS
+   Layout uses a virtual 360×640 coordinate space scaled to fill the canvas.
+═══════════════════════════════════════════════════════════════════════════ */
+const PC = document.getElementById('pipeCanvas');
+const pctx = PC.getContext('2d');
+const VW = 360, VH = 640;
+
+// Node descriptors
+const NODES = [
+  { id:'goal',       title:'GOAL INPUT',    sub:'/navigate_to_pose',   color:'#f97316', x:30,  y:10,  w:300, h:52, full:true },
+  { id:'planner',    title:'PLANNER',       sub:'/planner_server',     color:'#fb923c', x:30,  y:84,  w:300, h:52, full:true },
+  { id:'ctrl',       title:'CONTROLLER',    sub:'/controller_server',  color:'#fbbf24', x:30,  y:158, w:300, h:52, full:true },
+  { id:'lwheel',     title:'L WHEEL',       sub:'wheel_left_joint',    color:'#4ade80', x:15,  y:236, w:155, h:52 },
+  { id:'rwheel',     title:'R WHEEL',       sub:'wheel_right_joint',   color:'#4ade80', x:190, y:236, w:155, h:52 },
+  { id:'odom',       title:'ODOMETRY',      sub:'/odom',               color:'#60a5fa', x:30,  y:318, w:300, h:52, full:true },
+  { id:'lidar',      title:'LIDAR',         sub:'/scan  90 rays',      color:'#22d3ee', x:15,  y:396, w:155, h:52 },
+  { id:'imu',        title:'IMU',           sub:'/imu',                color:'#a78bfa', x:190, y:396, w:155, h:52 },
+  { id:'camera',     title:'CAMERA',        sub:'/camera/depth',       color:'#2dd4bf', x:15,  y:474, w:155, h:52 },
+  { id:'slam',       title:'SLAM',          sub:'/slam_toolbox',       color:'#818cf8', x:190, y:474, w:155, h:52 },
+  { id:'nav',        title:'NAV STATUS',    sub:'/bt_navigator',       color:'#34d399', x:30,  y:556, w:300, h:52, full:true },
+];
+
+// Indexed by id for quick lookup
+const nodeMap = {};
+NODES.forEach(n => { nodeMap[n.id] = n; n.lastPulse = 0; });
+
+// Bezier connections [fromId, toId, color, fromAnchor, toAnchor]
+// anchor: 'b'=bottom, 'bl'=bottom-left, 'br'=bottom-right, 'tl'=top-left, 'tr'=top-right, 't'=top, 'r'=right, 'l'=left
+const CONNS = [
+  { from:'goal',    to:'planner', color:'#f97316' },
+  { from:'planner', to:'ctrl',    color:'#fb923c' },
+  { from:'ctrl',    to:'lwheel',  color:'#4ade80', fromAnchor:'bl', toAnchor:'t' },
+  { from:'ctrl',    to:'rwheel',  color:'#4ade80', fromAnchor:'br', toAnchor:'t' },
+  { from:'lwheel',  to:'odom',    color:'#60a5fa', fromAnchor:'b',  toAnchor:'tl' },
+  { from:'rwheel',  to:'odom',    color:'#60a5fa', fromAnchor:'b',  toAnchor:'tr' },
+  { from:'odom',    to:'lidar',   color:'#22d3ee', fromAnchor:'bl', toAnchor:'t' },
+  { from:'odom',    to:'imu',     color:'#a78bfa', fromAnchor:'br', toAnchor:'t' },
+  { from:'lidar',   to:'camera',  color:'#2dd4bf' },
+  { from:'lidar',   to:'slam',    color:'#818cf8', fromAnchor:'r',  toAnchor:'l' },
+  { from:'imu',     to:'slam',    color:'#818cf8' },
+  { from:'camera',  to:'nav',     color:'#34d399', fromAnchor:'b',  toAnchor:'tl' },
+  { from:'slam',    to:'nav',     color:'#34d399', fromAnchor:'b',  toAnchor:'tr' },
+];
+
+// Pre-compute anchor points
+function getAnchor(node, side) {
+  const cx = node.x + node.w / 2, cy = node.y + node.h / 2;
+  const r = node.x + node.w, b = node.y + node.h;
+  switch(side) {
+    case 'b':  return [cx, b];
+    case 't':  return [cx, node.y];
+    case 'bl': return [node.x + node.w*0.3, b];
+    case 'br': return [node.x + node.w*0.7, b];
+    case 'tl': return [node.x + node.w*0.3, node.y];
+    case 'tr': return [node.x + node.w*0.7, node.y];
+    case 'l':  return [node.x, cy];
+    case 'r':  return [r, cy];
+    default:   return [cx, b];
+  }
+}
+
+CONNS.forEach(c => {
+  const fn = nodeMap[c.from], tn = nodeMap[c.to];
+  c.p0 = getAnchor(fn, c.fromAnchor || 'b');
+  c.p3 = getAnchor(tn, c.toAnchor  || 't');
+  // Auto control points: bend between the two points
+  const dx = c.p3[0] - c.p0[0], dy = c.p3[1] - c.p0[1];
+  const vert = Math.abs(dy) > Math.abs(dx);
+  if (vert) {
+    c.p1 = [c.p0[0], c.p0[1] + dy*0.4];
+    c.p2 = [c.p3[0], c.p3[1] - dy*0.4];
+  } else {
+    c.p1 = [c.p0[0] + dx*0.4, c.p0[1]];
+    c.p2 = [c.p3[0] - dx*0.4, c.p3[1]];
+  }
+  c.packets = [];
+  c.spawnTimer = Math.random(); // stagger initial spawns
+});
+
+function bezierPt(t, p0, p1, p2, p3) {
+  const mt = 1-t;
+  return [
+    mt*mt*mt*p0[0] + 3*mt*mt*t*p1[0] + 3*mt*t*t*p2[0] + t*t*t*p3[0],
+    mt*mt*mt*p0[1] + 3*mt*mt*t*p1[1] + 3*mt*t*t*p2[1] + t*t*t*p3[1],
+  ];
+}
+
+// Get live values for each node label (2 lines max)
+function nodeLines(id) {
+  if (!d) return ['—', ''];
+  const m = d; const s = d.slam; const j = d.joints; const imu = d.imu;
+  switch(id) {
+    case 'goal': {
+      if (m.goal_x == null) return ['no active goal', 'idle'];
+      const dist = m.x != null ? Math.hypot(m.goal_x - m.x, m.goal_y - m.y) : null;
+      const wi = m.waypoints?.length ? `wp ${(m.waypoint_index??0)+1}/${m.waypoints.length}` : 'direct';
+      return [`(${fmtN(m.goal_x,2)}, ${fmtN(m.goal_y,2)}) m  ${wi}`,
+              `dist ${fmtN(dist,3)} m`];
+    }
+    case 'planner': {
+      if (!m.nav_active) return ['nav idle', m.nav_succeeded?'succeeded':'waiting'];
+      const dx = (m.goal_x??0)-(m.x??0), dy = (m.goal_y??0)-(m.y??0);
+      const ang = Math.atan2(dy,dx), err = Math.atan2(Math.sin(ang-(m.theta??0)), Math.cos(ang-(m.theta??0)));
+      return [`heading err ${(err*180/Math.PI).toFixed(1)}°`,
+              m.escaping ? '⚠ ESCAPING OBSTACLE' : (m.nav_active?'ACTIVE':'IDLE')];
+    }
+    case 'ctrl':
+      return [`cmd vx ${fmtN(m.cmd_vx,4)} m/s  ω ${fmtN(m.cmd_omega,4)} r/s`,
+              `latency ${m.control_latency_ms??90} ms  slip ${fmtN(m.slip,4)}`];
+    case 'lwheel':
+      return j ? [`v=${fmtN(j.wheel_left.velocity_rad_s,3)} r/s`,
+                  `T=${fmtN(j.wheel_left.effort_Nm,4)} Nm`] : ['—',''];
+    case 'rwheel':
+      return j ? [`v=${fmtN(j.wheel_right.velocity_rad_s,3)} r/s`,
+                  `T=${fmtN(j.wheel_right.effort_Nm,4)} Nm`] : ['—',''];
+    case 'odom':
+      return [`x=${fmtN(m.x,4)}  y=${fmtN(m.y,4)}  θ=${fmtN((m.theta??0)*180/Math.PI,1)}°`,
+              `vx=${fmtN(m.vx,4)} m/s  ω=${fmtN(m.omega,4)} r/s`];
+    case 'lidar': {
+      const lr = m.lidar??[];
+      const hits = lr.filter(r=>r<5.98).length;
+      const mn = hits ? Math.min(...lr.filter(r=>r<5.98)) : 0;
+      return [`${lr.length} rays  hits ${hits}  min ${fmtN(mn,2)}m`,
+              `timing ${fmtN(m.timing?.lidar_ms,2)} ms`];
+    }
+    case 'imu':
+      return imu ? [`az=${fmtN(imu.linear_acceleration.z,3)} m/s²  wz=${fmtN(imu.angular_velocity.z,4)}`,
+                    `qz=${fmtN(imu.orientation.z,4)}  qw=${fmtN(imu.orientation.w,4)}`] : ['—',''];
+    case 'camera': {
+      const det = m.camera_detections??[];
+      const mn = m.camera_depth_row?.length ? Math.min(...m.camera_depth_row) : null;
+      return [`${det.length} detections  near ${fmtN(mn,2)}m`,
+              `timing ${fmtN(m.timing?.camera_ms,2)} ms`];
+    }
+    case 'slam':
+      return s ? [`σ=${fmtN(s.position_uncertainty_cm,1)}cm  exp ${fmtN(s.map_explored_pct,1)}%`,
+                  `match ${fmtN(s.scan_match_quality,2)}  t=${fmtN(m.timing?.slam_ms,2)}ms`] : ['—',''];
+    case 'nav': {
+      const st = m.escaping ? '⚠ ESCAPING' : m.nav_active ? '● ACTIVE' : m.nav_succeeded ? '✓ DONE' : '○ IDLE';
+      const dist2 = m.goal_x!=null ? Math.hypot((m.goal_x??0)-(m.x??0),(m.goal_y??0)-(m.y??0)) : null;
+      return [st + (dist2!=null ? `  dist ${fmtN(dist2,3)}m` : ''),
+              `escapes ${m.consec_escapes??0}  stuck ${m.no_move_ticks??0} ticks`];
+    }
+    default: return ['—',''];
+  }
+}
+
+function drawNode(ctx, scale, n, now) {
+  const sx = n.x*scale, sy = n.y*scale, sw = n.w*scale, sh = n.h*scale;
+  const R = 7*scale;
+  const age = now - (n.lastPulse||0);
+  const glow = Math.max(0, 1 - age/600); // fade glow over 600ms
+
+  ctx.save();
+  // Shadow glow
+  if (glow > 0.05) {
+    ctx.shadowColor = n.color;
+    ctx.shadowBlur = 18*scale*glow;
+  }
+
+  // Background
+  ctx.fillStyle = '#070e1c';
+  ctx.beginPath();
+  ctx.roundRect(sx, sy, sw, sh, R);
+  ctx.fill();
+
+  // Border with color
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = n.color + (glow > 0.1 ? 'ff' : '88');
+  ctx.lineWidth = (glow > 0.1 ? 1.5 : 1) * scale;
+  ctx.beginPath();
+  ctx.roundRect(sx, sy, sw, sh, R);
+  ctx.stroke();
+
+  // Color accent bar on left
+  ctx.fillStyle = n.color;
+  ctx.beginPath();
+  ctx.roundRect(sx, sy, 4*scale, sh, [R,0,0,R]);
+  ctx.fill();
+
+  // Title
+  ctx.fillStyle = n.color;
+  ctx.font = `bold ${9*scale}px "JetBrains Mono",monospace`;
+  ctx.fillText(n.title, sx + 9*scale, sy + 14*scale);
+
+  // Sub-title
+  ctx.fillStyle = '#3d5570';
+  ctx.font = `${7.5*scale}px "JetBrains Mono",monospace`;
+  ctx.fillText(n.sub, sx + 9*scale, sy + 24*scale);
+
+  // Data lines
+  const lines = nodeLines(n.id);
+  ctx.fillStyle = '#b0c8e8';
+  ctx.font = `${8*scale}px "JetBrains Mono",monospace`;
+  ctx.fillText(lines[0], sx + 9*scale, sy + 37*scale);
+  ctx.fillStyle = '#5a7090';
+  ctx.fillText(lines[1], sx + 9*scale, sy + 47*scale);
+
+  ctx.restore();
+}
+
+function drawConn(ctx, scale, c, now) {
+  const [x0,y0] = c.p0.map(v=>v*scale);
+  const [x1,y1] = c.p1.map(v=>v*scale);
+  const [x2,y2] = c.p2.map(v=>v*scale);
+  const [x3,y3] = c.p3.map(v=>v*scale);
+
+  // Main connection line
+  ctx.save();
+  ctx.strokeStyle = c.color + '44';
+  ctx.lineWidth = 1.5*scale;
+  ctx.setLineDash([4*scale, 5*scale]);
+  ctx.lineDashOffset = -(now * 0.04) % (9*scale);
+  ctx.beginPath();
+  ctx.moveTo(x0,y0);
+  ctx.bezierCurveTo(x1,y1,x2,y2,x3,y3);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Arrowhead
+  const near = bezierPt(0.97, c.p0, c.p1, c.p2, c.p3).map(v=>v*scale);
+  const nearr = bezierPt(0.99, c.p0, c.p1, c.p2, c.p3).map(v=>v*scale);
+  const ang = Math.atan2(nearr[1]-near[1], nearr[0]-near[0]);
+  const as = 6*scale;
+  ctx.strokeStyle = c.color + '88';
+  ctx.lineWidth = 1.5*scale;
+  ctx.beginPath();
+  ctx.moveTo(x3, y3);
+  ctx.lineTo(x3 - as*Math.cos(ang-0.4), y3 - as*Math.sin(ang-0.4));
+  ctx.moveTo(x3, y3);
+  ctx.lineTo(x3 - as*Math.cos(ang+0.4), y3 - as*Math.sin(ang+0.4));
+  ctx.stroke();
+
+  // Data packets (glowing dots moving along the bezier)
+  c.packets.forEach(pk => {
+    const [px,py] = bezierPt(pk.t, c.p0, c.p1, c.p2, c.p3).map(v=>v*scale);
+    const r = 3.5*scale;
+    ctx.save();
+    ctx.shadowColor = c.color;
+    ctx.shadowBlur = 8*scale;
+    ctx.fillStyle = c.color;
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI*2); ctx.fill();
+    // inner bright core
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(px, py, 1.5*scale, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+
+  ctx.restore();
+}
+
+let lastPipeTime = 0;
+function renderPipeline(now) {
+  const W = PC.width, H = PC.height;
+  const scale = Math.min(W / VW, H / VH);
+  const offX = (W - VW*scale) / 2;
+  const offY = (H - VH*scale) / 2;
+  const dt = Math.min(now - lastPipeTime, 100) / 1000;
+  lastPipeTime = now;
+
+  pctx.clearRect(0, 0, W, H);
+
+  // Subtle background grid
+  pctx.strokeStyle = 'rgba(21,32,48,0.5)';
+  pctx.lineWidth = 0.5;
+  for (let x=0; x<W; x+=20) { pctx.beginPath(); pctx.moveTo(x,0); pctx.lineTo(x,H); pctx.stroke(); }
+  for (let y=0; y<H; y+=20) { pctx.beginPath(); pctx.moveTo(0,y); pctx.lineTo(W,y); pctx.stroke(); }
+
+  pctx.save();
+  pctx.translate(offX, offY);
+
+  // Advance & spawn packets
+  const activeConns = d ? getActiveConns() : new Set();
+  CONNS.forEach(c => {
+    c.packets = c.packets.filter(pk => pk.t < 1);
+    c.packets.forEach(pk => { pk.t += pk.speed * dt * 60; });
+    c.spawnTimer -= dt;
+    if (c.spawnTimer <= 0 && activeConns.has(c.from+'>'+c.to)) {
+      c.packets.push({ t: 0, speed: 0.006 + Math.random()*0.006 });
+      c.spawnTimer = 0.15 + Math.random()*0.25;
+    } else if (c.spawnTimer <= 0) {
+      c.spawnTimer = 0.4;
+    }
+  });
+
+  // Update node pulse timestamps
+  if (d) pulseNodes(now);
+
+  // Draw connections first (under nodes)
+  CONNS.forEach(c => drawConn(pctx, scale, c, now));
+
+  // Draw nodes on top
+  NODES.forEach(n => drawNode(pctx, scale, n, now));
+
+  pctx.restore();
+}
+
+function getActiveConns() {
+  const s = new Set();
+  if (!d) return s;
+  if (d.nav_active || d.vx !== 0 || d.omega !== 0) {
+    ['goal>planner','planner>ctrl','ctrl>lwheel','ctrl>rwheel',
+     'lwheel>odom','rwheel>odom','odom>lidar','odom>imu',
+     'lidar>camera','lidar>slam','imu>slam','camera>nav','slam>nav'].forEach(k=>s.add(k));
+  } else {
+    // Always flow sensor data even when stationary
+    ['odom>lidar','odom>imu','lidar>camera','lidar>slam','imu>slam'].forEach(k=>s.add(k));
+    if (d.goal_x != null) ['goal>planner','planner>ctrl','camera>nav','slam>nav'].forEach(k=>s.add(k));
+  }
+  return s;
+}
+
+let lastPulseD = null;
+function pulseNodes(now) {
+  if (!lastPulseD) { lastPulseD = d; return; }
+  const tol = (id) => {
+    switch(id) {
+      case 'goal':   return (d.goal_x !== lastPulseD.goal_x || d.goal_y !== lastPulseD.goal_y);
+      case 'planner':return d.nav_active || d.escaping;
+      case 'ctrl':   return Math.abs((d.cmd_vx||0)-(lastPulseD.cmd_vx||0)) > 0.001 || Math.abs((d.cmd_omega||0)-(lastPulseD.cmd_omega||0)) > 0.001;
+      case 'lwheel': return d.joints && Math.abs(d.joints.wheel_left.velocity_rad_s) > 0.01;
+      case 'rwheel': return d.joints && Math.abs(d.joints.wheel_right.velocity_rad_s) > 0.01;
+      case 'odom':   return Math.abs((d.vx||0)) > 0.005 || Math.abs((d.omega||0)) > 0.005;
+      case 'lidar':  return d.lidar && d.lidar.length > 0;
+      case 'imu':    return true;
+      case 'camera': return true;
+      case 'slam':   return true;
+      case 'nav':    return d.nav_active || d.nav_succeeded;
+      default:       return false;
+    }
+  };
+  NODES.forEach(n => { if (tol(n.id)) n.lastPulse = now; });
+  lastPulseD = d;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAP CANVAS
+═══════════════════════════════════════════════════════════════════════════ */
+const MC = document.getElementById('mapCanvas');
+const mctx = MC.getContext('2d');
+let mapClickGoal = true;
+
+MC.addEventListener('click', e => {
+  if (!mapClickGoal) return;
+  const rect = MC.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const W = MC.width, H = MC.height;
+  const scale = Math.min(W,H) / MAP_SIZE;
+  const ox = (W - MAP_SIZE*scale)/2, oy = (H - MAP_SIZE*scale)/2;
+  const gx = (mx - ox) / scale;
+  const gy = (H - my - oy) / scale;
+  if (gx >= 0 && gx <= MAP_SIZE && gy >= 0 && gy <= MAP_SIZE) {
+    document.getElementById('gx').value = gx.toFixed(1);
+    document.getElementById('gy').value = gy.toFixed(1);
+    sendGoal();
+  }
+});
+
+function renderMap() {
+  const W = MC.width, H = MC.height;
+  const scale = Math.min(W,H) / MAP_SIZE;
+  const ox = (W - MAP_SIZE*scale)/2, oy = (H - MAP_SIZE*scale)/2;
+  const w2c = (x,y) => [ox + x*scale, oy + (MAP_SIZE - y)*scale];
+
+  mctx.clearRect(0,0,W,H);
+  mctx.fillStyle = '#040b16';
+  mctx.fillRect(0,0,W,H);
+
+  // Grid
+  mctx.strokeStyle = 'rgba(21,48,72,0.6)'; mctx.lineWidth = 0.8;
+  for (let i=0; i<=MAP_SIZE; i++) {
+    const [px] = w2c(i, 0); const [,py] = w2c(0, i);
+    mctx.beginPath(); mctx.moveTo(px, oy); mctx.lineTo(px, oy + MAP_SIZE*scale); mctx.stroke();
+    mctx.beginPath(); mctx.moveTo(ox, py); mctx.lineTo(ox + MAP_SIZE*scale, py); mctx.stroke();
+  }
+
+  // Obstacles
+  OBSTACLES.forEach(([qx,qy,qw,qh]) => {
+    const [bx,by] = w2c(qx, qy+qh);
+    mctx.fillStyle = '#162236';
+    mctx.strokeStyle = '#1e3550';
+    mctx.lineWidth = 1;
+    mctx.fillRect(bx, by, qw*scale, qh*scale);
+    mctx.strokeRect(bx, by, qw*scale, qh*scale);
+  });
+
+  if (!d) return;
+
+  // Full path trail
+  if (d.full_path && d.full_path.length > 1) {
+    mctx.strokeStyle = 'rgba(34,211,238,0.15)'; mctx.lineWidth = 1;
+    mctx.beginPath();
+    d.full_path.forEach((p,i) => {
+      const [px,py] = w2c(p[0],p[1]);
+      i===0 ? mctx.moveTo(px,py) : mctx.lineTo(px,py);
+    });
+    mctx.stroke();
+  }
+
+  // Recent path
+  if (d.path && d.path.length > 1) {
+    mctx.strokeStyle = 'rgba(34,211,238,0.8)'; mctx.lineWidth = 2;
+    mctx.beginPath();
+    d.path.forEach((p,i) => {
+      const [px,py] = w2c(p[0],p[1]);
+      i===0 ? mctx.moveTo(px,py) : mctx.lineTo(px,py);
+    });
+    mctx.stroke();
+  }
+
+  // LiDAR hits
+  if (d.lidar && d.lidar.length) {
+    const n = d.lidar.length;
+    mctx.fillStyle = 'rgba(34,211,238,0.55)';
+    for (let i=0; i<n; i+=2) {
+      const r = d.lidar[i];
+      if (r >= 5.98) continue;
+      const ang = d.theta + 2*Math.PI*i/n;
+      const [hx,hy] = w2c(d.x + Math.cos(ang)*r, d.y + Math.sin(ang)*r);
+      mctx.beginPath(); mctx.arc(hx, hy, 1.5, 0, Math.PI*2); mctx.fill();
+    }
+  }
+
+  // Camera FOV cone
+  if (d.lidar) {
+    const fovHalf = 69/2 * Math.PI/180;
+    const camRange = 4;
+    const [rx,ry] = w2c(d.x, d.y);
+    mctx.save();
+    mctx.strokeStyle = 'rgba(45,212,191,0.4)';
+    mctx.fillStyle = 'rgba(45,212,191,0.05)';
+    mctx.lineWidth = 1;
+    const aL = -(d.theta + fovHalf), aR = -(d.theta - fovHalf);
+    mctx.beginPath();
+    mctx.moveTo(rx, ry);
+    mctx.arc(rx, ry, camRange*scale, aL, aR);
+    mctx.closePath();
+    mctx.fill(); mctx.stroke();
+    mctx.restore();
+  }
+
+  // Waypoints
+  (d.waypoints||[]).forEach((wp,i) => {
+    const [wx,wy] = w2c(wp[0],wp[1]);
+    mctx.strokeStyle = i < d.waypoint_index ? 'rgba(74,222,128,0.6)' : 'rgba(251,146,60,0.9)';
+    mctx.lineWidth = 2;
+    const sz = 6;
+    mctx.beginPath(); mctx.moveTo(wx-sz, wy-sz); mctx.lineTo(wx+sz, wy+sz); mctx.stroke();
+    mctx.beginPath(); mctx.moveTo(wx+sz, wy-sz); mctx.lineTo(wx-sz, wy+sz); mctx.stroke();
+    // label
+    mctx.fillStyle = 'rgba(251,146,60,0.8)';
+    mctx.font = `${10}px monospace`;
+    mctx.fillText(i+1, wx+8, wy-4);
+  });
+
+  // Goal line
+  if (d.goal_x != null) {
+    const [gx,gy] = w2c(d.goal_x, d.goal_y);
+    const [rx2,ry2] = w2c(d.x,d.y);
+    mctx.strokeStyle = 'rgba(251,146,60,0.3)'; mctx.lineWidth = 1;
+    mctx.setLineDash([4,6]);
+    mctx.beginPath(); mctx.moveTo(rx2,ry2); mctx.lineTo(gx,gy); mctx.stroke();
+    mctx.setLineDash([]);
+    // Goal ring
+    mctx.save();
+    mctx.shadowColor = '#f97316'; mctx.shadowBlur = 10;
+    mctx.strokeStyle = '#f97316'; mctx.lineWidth = 2;
+    mctx.beginPath(); mctx.arc(gx,gy, 9, 0, Math.PI*2); mctx.stroke();
+    mctx.restore();
+    mctx.fillStyle = '#f97316';
+    mctx.font = '9px monospace';
+    mctx.fillText('G', gx-4, gy+4);
+  }
+
+  // Robot body
+  const [rx, ry] = w2c(d.x, d.y);
+  const navColor = d.nav_active ? (d.escaping ? '#f87171' : '#4ade80') : '#60a5fa';
+  mctx.save();
+  mctx.translate(rx, ry);
+  mctx.rotate(-d.theta);
+  // Body shadow
+  mctx.shadowColor = navColor; mctx.shadowBlur = 14;
+  mctx.fillStyle = navColor;
+  mctx.beginPath(); mctx.arc(0, 0, 9, 0, Math.PI*2); mctx.fill();
+  // Direction indicator
+  mctx.shadowBlur = 0;
+  mctx.strokeStyle = '#fff'; mctx.lineWidth = 2;
+  mctx.beginPath(); mctx.moveTo(0,0); mctx.lineTo(13,0); mctx.stroke();
+  // Velocity vector
+  if (Math.abs(d.vx) > 0.01) {
+    mctx.strokeStyle = 'rgba(251,191,36,0.9)'; mctx.lineWidth = 1.5;
+    mctx.beginPath(); mctx.moveTo(0,0); mctx.lineTo(d.vx*scale*2.5, 0); mctx.stroke();
+  }
+  mctx.restore();
+
+  // Status overlay bottom-left
+  const status = d.escaping ? '⚠ ESCAPING' : d.nav_active ? '● NAVIGATING' : d.nav_succeeded ? '✓ ARRIVED' : '○ IDLE';
+  const statusColor = d.escaping ? '#f87171' : d.nav_active ? '#4ade80' : d.nav_succeeded ? '#22d3ee' : '#5a7090';
+  mctx.fillStyle = 'rgba(4,12,24,0.75)';
+  mctx.fillRect(ox+4, oy + MAP_SIZE*scale - 26, 140, 20);
+  mctx.fillStyle = statusColor;
+  mctx.font = 'bold 10px monospace';
+  mctx.fillText(status, ox+8, oy + MAP_SIZE*scale - 12);
+  mctx.fillStyle = '#5a7090';
+  mctx.font = '9px monospace';
+  mctx.fillText(`(${fmtN(d.x,3)}, ${fmtN(d.y,3)}) θ=${fmtN(d.theta*180/Math.PI,1)}°`, ox+4, oy+16);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIDAR POLAR CANVAS
+═══════════════════════════════════════════════════════════════════════════ */
+const LC = document.getElementById('lidarCanvas');
+const lctx = LC.getContext('2d');
+// Persistence buffer - fade old scans
+let lidarHistory = [];
+
+function renderLidar() {
+  const W = LC.width, H = LC.height;
+  const cx = W/2, cy = H/2;
+  const maxR = d ? 6.0 : 6.0;
+  const scale = (Math.min(W,H)/2 - 10) / maxR;
+
+  // Fade background (creates persistence effect)
+  lctx.fillStyle = 'rgba(4,11,22,0.35)';
+  lctx.fillRect(0,0,W,H);
+
+  // Range rings
+  [1,2,3,4,5,6].forEach(r => {
+    lctx.strokeStyle = r===1 ? 'rgba(34,211,238,0.2)' : 'rgba(21,48,72,0.4)';
+    lctx.lineWidth = 1;
+    lctx.beginPath(); lctx.arc(cx, cy, r*scale, 0, Math.PI*2); lctx.stroke();
+    lctx.fillStyle = '#3d5570';
+    lctx.font = '8px monospace';
+    lctx.fillText(r+'m', cx + r*scale + 2, cy - 2);
+  });
+
+  // Crosshairs
+  lctx.strokeStyle = 'rgba(34,211,238,0.15)'; lctx.lineWidth = 0.5;
+  lctx.beginPath(); lctx.moveTo(cx,4); lctx.lineTo(cx, H-4); lctx.stroke();
+  lctx.beginPath(); lctx.moveTo(4,cy); lctx.lineTo(W-4,cy); lctx.stroke();
+
+  if (d && d.lidar && d.lidar.length) {
+    const n = d.lidar.length;
+
+    // Filled scan polygon (area under scan)
+    lctx.fillStyle = 'rgba(34,211,238,0.06)';
+    lctx.beginPath();
+    for (let i=0; i<n; i++) {
+      const r = Math.min(d.lidar[i], maxR) * scale;
+      const ang = -(2*Math.PI*i/n) - Math.PI/2; // top=forward
+      const px = cx + Math.cos(ang)*r, py = cy + Math.sin(ang)*r;
+      i===0 ? lctx.moveTo(px,py) : lctx.lineTo(px,py);
+    }
+    lctx.closePath(); lctx.fill();
+
+    // Scan outline
+    lctx.strokeStyle = 'rgba(34,211,238,0.6)'; lctx.lineWidth = 1.2;
+    lctx.beginPath();
+    for (let i=0; i<n; i++) {
+      const r = Math.min(d.lidar[i], maxR) * scale;
+      const ang = -(2*Math.PI*i/n) - Math.PI/2;
+      const px = cx + Math.cos(ang)*r, py = cy + Math.sin(ang)*r;
+      i===0 ? lctx.moveTo(px,py) : lctx.lineTo(px,py);
+    }
+    lctx.closePath(); lctx.stroke();
+
+    // Hit points with distance-based color
+    for (let i=0; i<n; i++) {
+      const r = d.lidar[i];
+      if (r >= 5.98) continue;
+      const rs = r * scale;
+      const ang = -(2*Math.PI*i/n) - Math.PI/2;
+      const px = cx + Math.cos(ang)*rs, py = cy + Math.sin(ang)*rs;
+      // Color by proximity: red=close, cyan=far
+      const norm = clamp(r/maxR, 0, 1);
+      const hue = norm * 0.55; // 0=red, 0.55=cyan
+      lctx.fillStyle = hsvToRgb(hue, 0.9, 0.9);
+      lctx.beginPath(); lctx.arc(px,py, 2, 0, Math.PI*2); lctx.fill();
+    }
+
+    // Camera FOV arc
+    const fovHalf = 69/2 * Math.PI/180;
+    lctx.strokeStyle = 'rgba(45,212,191,0.5)'; lctx.lineWidth = 1.5;
+    lctx.setLineDash([3,4]);
+    lctx.beginPath();
+    lctx.moveTo(cx,cy);
+    lctx.arc(cx,cy, 2.5*scale, -Math.PI/2 - fovHalf, -Math.PI/2 + fovHalf);
+    lctx.closePath(); lctx.stroke();
+    lctx.setLineDash([]);
+  }
+
+  // Robot dot
+  lctx.save();
+  lctx.shadowColor = '#22d3ee'; lctx.shadowBlur = 8;
+  lctx.fillStyle = '#22d3ee';
+  lctx.beginPath(); lctx.arc(cx, cy, 4, 0, Math.PI*2); lctx.fill();
+  lctx.restore();
+
+  // Forward direction
+  if (d) {
+    lctx.strokeStyle = '#60a5fa'; lctx.lineWidth = 1.5;
+    lctx.beginPath(); lctx.moveTo(cx,cy);
+    lctx.lineTo(cx, cy - 18); lctx.stroke();
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CAMERA DEPTH CANVAS
+═══════════════════════════════════════════════════════════════════════════ */
+const CC = document.getElementById('camCanvas');
+const cctx = CC.getContext('2d');
+
+function renderCamera() {
+  const W = CC.width, H = CC.height;
+  cctx.clearRect(0,0,W,H);
+  cctx.fillStyle = '#04080f';
+  cctx.fillRect(0,0,W,H);
+
+  if (!d || !d.camera_depth_row || !d.camera_depth_row.length) {
+    cctx.fillStyle = '#3d5570';
+    cctx.font = '9px monospace';
+    cctx.fillText('no depth frame', 8, H/2+3);
+    return;
+  }
+
+  const depth = d.camera_depth_row;
+  const n = depth.length;
+  const pw = W / n;
+  const maxD = 6.0;
+
+  // False-color depth bar
+  for (let i=0; i<n; i++) {
+    const v = clamp(depth[i] / maxD, 0, 1);
+    // Color map: blue(far) → green → yellow → red(close)
+    let r, g, b;
+    if (v > 0.5) { // far: blue → cyan → green
+      const t = (v - 0.5) * 2;
+      r = 0; g = Math.round(lerp(255, 100, t)); b = Math.round(lerp(50, 255, t));
+    } else { // near: green → yellow → red
+      const t = v * 2;
+      r = Math.round(lerp(255, 0, t)); g = Math.round(lerp(50, 220, t)); b = 0;
+    }
+    cctx.fillStyle = `rgb(${r},${g},${b})`;
+    cctx.fillRect(Math.round(i*pw), 0, Math.ceil(pw), H - 14);
+  }
+
+  // Min depth indicator line
+  const minD = Math.min(...depth);
+  const minIdx = depth.indexOf(minD);
+  cctx.strokeStyle = '#fff'; cctx.lineWidth = 1.5;
+  const minX = (minIdx + 0.5) * pw;
+  cctx.beginPath(); cctx.moveTo(minX, 0); cctx.lineTo(minX, H-14); cctx.stroke();
+
+  // Detection overlays (bounding boxes)
+  (d.camera_detections||[]).forEach(det => {
+    const x0 = (det.pixel_x - det.bbox_w/2) * (W/n);
+    const bw = det.bbox_w * (W/n);
+    const bh = Math.min(det.bbox_h, H-18);
+    const by = Math.max(0, (H-18)/2 - bh/2);
+    cctx.strokeStyle = det.distance_m < 0.8 ? '#f87171' : det.distance_m < 1.5 ? '#fbbf24' : '#4ade80';
+    cctx.lineWidth = 2;
+    cctx.strokeRect(x0, by, bw, bh);
+    cctx.fillStyle = cctx.strokeStyle;
+    cctx.font = 'bold 8px monospace';
+    cctx.fillText(`${det.label} ${det.distance_m.toFixed(1)}m`, x0+2, by+9);
+  });
+
+  // Scale bar
+  cctx.fillStyle = '#070d1a';
+  cctx.fillRect(0, H-14, W, 14);
+  cctx.fillStyle = '#3d5570';
+  cctx.font = '8px monospace';
+  ['0m','1m','2m','3m','4m','5m','6m'].forEach((label, i) => {
+    const x = (i/6) * W;
+    cctx.fillStyle = '#3d5570';
+    cctx.fillText(label, x+2, H-3);
+  });
+
+  // Detections list
+  const detEl = document.getElementById('det-list');
+  if (d.camera_detections && d.camera_detections.length) {
+    detEl.innerHTML = d.camera_detections.map(det => {
+      const dc = det.distance_m < 0.8 ? 'var(--red)' : det.distance_m < 1.5 ? 'var(--yellow)' : 'var(--green)';
+      const cc2 = `rgba(${det.distance_m<0.8?'248,113,113':det.distance_m<1.5?'251,191,36':'74,222,128'},.3)`;
+      return `<div class="det-item" style="border-color:${dc}">
+        <span style="color:${dc};font-weight:700">${det.label}</span>
+        <span style="color:var(--dim2)">${det.confidence.toFixed(2)}</span>
+        <span style="color:${dc}">${det.distance_m.toFixed(2)}m</span>
+        <span style="color:var(--dim2)">${det.bbox_w}×${det.bbox_h}px</span>
+      </div>`;
+    }).join('');
+  } else {
+    detEl.innerHTML = '<span style="color:var(--dim2);font-size:9px">✓ no obstacles in FOV</span>';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SLAM & NAV METRICS
+═══════════════════════════════════════════════════════════════════════════ */
+function mkSMKV(k, v, color) {
+  return `<div class="sm-kv"><span class="sm-k">${k}</span><span class="sm-v" style="color:${color||'var(--text)'}">${v}</span></div>`;
+}
+
+function renderSLAM() {
+  if (!d) return;
+  const s = d.slam;
+  const grid = document.getElementById('slam-grid');
+  if (!s) return;
+  const covColor = s.covariance_m2 < 0.05 ? 'var(--green)' : s.covariance_m2 < 0.15 ? 'var(--yellow)' : 'var(--red)';
+  const expColor = s.map_explored_pct > 50 ? 'var(--green)' : 'var(--yellow)';
+  const navStatus = d.escaping ? '⚠ ESCAPING' : d.nav_active ? '● ACTIVE' : d.nav_succeeded ? '✓ DONE' : '○ IDLE';
+  const navColor = d.escaping ? 'var(--red)' : d.nav_active ? 'var(--green)' : d.nav_succeeded ? 'var(--cyan)' : 'var(--dim2)';
+  const dist = d.goal_x != null ? Math.hypot((d.goal_x-d.x)||0,(d.goal_y-d.y)||0) : null;
+  grid.innerHTML = [
+    mkSMKV('pose x', fmtN(s.pose_x,4)+'m', 'var(--cyan)'),
+    mkSMKV('pose y', fmtN(s.pose_y,4)+'m', 'var(--cyan)'),
+    mkSMKV('theta', fmtN(s.pose_theta_deg,2)+'°', 'var(--blue)'),
+    mkSMKV('uncertainty', fmtN(s.position_uncertainty_cm,1)+' cm', covColor),
+    mkSMKV('match quality', fmtN(s.scan_match_quality,2), 'var(--teal)'),
+    mkSMKV('map explored', fmtN(s.map_explored_pct,1)+'%', expColor),
+    mkSMKV('cells seen', s.map_cells_seen, 'var(--text)'),
+    mkSMKV('nav status', navStatus, navColor),
+    mkSMKV('dist to goal', dist!=null ? fmtN(dist,3)+'m' : '--', 'var(--orange)'),
+    mkSMKV('battery', fmtN(d.battery,2)+'%', d.battery>50?'var(--green)':d.battery>20?'var(--yellow)':'var(--red)'),
+  ].join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   METRICS BAR
+═══════════════════════════════════════════════════════════════════════════ */
+function mkMgRow(label, val, frac, color) {
+  const fillStyle = `background:${color};width:${clamp(frac*100,0,100)}%`;
+  return `<div class="mg-row">
+    <span class="mg-label">${label}</span>
+    <span class="mg-val" style="color:${color}">${val}</span>
+    <div class="mg-bar"><div class="mg-bar-fill" style="${fillStyle}"></div></div>
+  </div>`;
+}
+
+function renderMetrics() {
+  if (!d) return;
+
+  // MOTOR
+  const slipC = d.slip > 0.15 ? 'var(--red)' : d.slip > 0.07 ? 'var(--yellow)' : 'var(--green)';
+  document.getElementById('mg-motor-body').innerHTML =
+    mkMgRow('cmd vx', fmtN(d.cmd_vx,4)+' m/s', Math.abs(d.cmd_vx||0)/0.55, 'var(--orange)') +
+    mkMgRow('act vx', fmtN(d.vx,4)+' m/s',   Math.abs(d.vx||0)/0.55,     'var(--cyan)') +
+    mkMgRow('cmd ω',  fmtN(d.cmd_omega,3)+' r/s', Math.abs(d.cmd_omega||0)/2.0, 'var(--orange)') +
+    mkMgRow('slip',   fmtN(d.slip,4), (d.slip||0)/0.28, slipC);
+
+  // JOINTS
+  const j = d.joints;
+  if (j) {
+    const lv = j.wheel_left.velocity_rad_s, rv = j.wheel_right.velocity_rad_s;
+    document.getElementById('mg-joints-body').innerHTML =
+      mkMgRow('L vel', fmtN(lv,3)+' r/s', Math.abs(lv)/15, 'var(--green)') +
+      mkMgRow('R vel', fmtN(rv,3)+' r/s', Math.abs(rv)/15, 'var(--green)') +
+      mkMgRow('L T',   fmtN(j.wheel_left.effort_Nm,4)+' Nm',  j.wheel_left.effort_Nm/2, 'var(--teal)') +
+      mkMgRow('R T',   fmtN(j.wheel_right.effort_Nm,4)+' Nm', j.wheel_right.effort_Nm/2, 'var(--teal)');
+  }
+
+  // IMU
+  const imu = d.imu;
+  if (imu) {
+    const az = imu.linear_acceleration.z;
+    const wz = imu.angular_velocity.z;
+    document.getElementById('mg-imu-body').innerHTML =
+      mkMgRow('az', fmtN(az,4)+' m/s²', Math.abs(az)/12, 'var(--purple)') +
+      mkMgRow('wz', fmtN(wz,4)+' r/s',  Math.abs(wz)/3,  'var(--purple)') +
+      mkMgRow('qz', fmtN(imu.orientation.z,4), Math.abs(imu.orientation.z), 'var(--blue)') +
+      mkMgRow('qw', fmtN(imu.orientation.w,4), Math.abs(imu.orientation.w), 'var(--blue)');
+  }
+
+  // ODOMETRY
+  document.getElementById('mg-odom-body').innerHTML =
+    mkMgRow('x', fmtN(d.x,4)+'m', (d.x||0)/10, 'var(--cyan)') +
+    mkMgRow('y', fmtN(d.y,4)+'m', (d.y||0)/10, 'var(--cyan)') +
+    mkMgRow('θ', fmtN((d.theta||0)*180/Math.PI,2)+'°', Math.abs(d.theta||0)/Math.PI, 'var(--blue)') +
+    mkMgRow('vx', fmtN(d.vx,4)+' m/s', Math.abs(d.vx||0)/0.55, 'var(--green)');
+
+  // TIMING
+  const t = d.timing || {};
+  const lms = t.lidar_ms||0, cms = t.camera_ms||0, sms = t.slam_ms||0;
+  const tCol = v => v < 3 ? 'var(--green)' : v < 8 ? 'var(--yellow)' : 'var(--red)';
+  document.getElementById('mg-timing-body').innerHTML =
+    mkMgRow('lidar', fmtN(lms,2)+' ms', lms/12, tCol(lms)) +
+    mkMgRow('camera', fmtN(cms,2)+' ms', cms/12, tCol(cms)) +
+    mkMgRow('slam', fmtN(sms,2)+' ms', sms/12, tCol(sms));
+
+  // Battery header
+  const bat = d.battery||0;
+  const batC = bat>50?'var(--green)':bat>20?'var(--yellow)':'var(--red)';
+  document.getElementById('bat-hdr').style.color = batC.replace('var(--','').replace(')','');
+  document.getElementById('bat-hdr').innerHTML = `🔋 ${fmtN(bat,2)}%`;
+  document.getElementById('bat-hdr').style.color = bat>50?'#4ade80':bat>20?'#fbbf24':'#f87171';
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CANVAS RESIZE
+═══════════════════════════════════════════════════════════════════════════ */
+function resizeCanvas(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  if (canvas.width !== rect.width || canvas.height !== rect.height) {
+    canvas.width  = rect.width  * window.devicePixelRatio;
+    canvas.height = rect.height * window.devicePixelRatio;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    // Re-scale after resize — account for DPR
+    canvas.width  = rect.width;
+    canvas.height = rect.height;
+  }
+}
+
+function initCanvasSizes() {
+  [PC, MC].forEach(c => {
+    const rect = c.parentElement.getBoundingClientRect();
+    c.width  = rect.width;
+    c.height = rect.height - (c===MC ? 32 : 0); // leave room for controls
+  });
+  // LiDAR: 340×170 already set, but respect actual width
+  const lcRect = LC.parentElement.getBoundingClientRect();
+  LC.width  = lcRect.width - 10;
+  LC.height = 160;
+  const ccRect = CC.parentElement.getBoundingClientRect();
+  CC.width  = ccRect.width - 10;
+  CC.height = 56;
+}
+
+window.addEventListener('resize', initCanvasSizes);
+setTimeout(initCanvasSizes, 100);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN ANIMATION LOOP
+═══════════════════════════════════════════════════════════════════════════ */
+function frame(now) {
+  renderPipeline(now);
+  if (d) {
+    renderMap();
+    renderLidar();
+    renderCamera();
+    renderSLAM();
+    renderMetrics();
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   KEYBOARD DRIVE
+═══════════════════════════════════════════════════════════════════════════ */
+const DRIVE_MAP = {
+  'w':0, 'arrowup':0, 's':1, 'arrowdown':1, 'a':2, 'arrowleft':2, 'd':3, 'arrowright':3, ' ':4
+};
+const DRIVE_CMDS = [[0.45,0],[-0.45,0],[0,1.4],[0,-1.4],[0,0]];
+let driveTimer = null;
+
+function beginDrive(vx, omega) {
+  clearInterval(driveTimer);
+  fetch('/sim/cmd_vel?vx='+vx+'&omega='+omega, {method:'POST'}).catch(()=>{});
+  driveTimer = setInterval(() => {
+    fetch('/sim/cmd_vel?vx='+vx+'&omega='+omega, {method:'POST'}).catch(()=>{});
+  }, 100);
+}
+function endDrive() {
+  clearInterval(driveTimer); driveTimer = null;
+  fetch('/sim/cmd_vel?vx=0&omega=0', {method:'POST'}).catch(()=>{});
+}
+
+window.addEventListener('keydown', e => {
+  if (document.activeElement.tagName === 'INPUT') return;
+  const key = e.key.toLowerCase();
+  if (key in DRIVE_MAP) {
+    e.preventDefault();
+    const [vx, omega] = DRIVE_CMDS[DRIVE_MAP[key]];
+    if (vx===0 && omega===0) endDrive(); else beginDrive(vx, omega);
+  }
+});
+window.addEventListener('keyup', e => {
+  const key = e.key.toLowerCase();
+  if (key in DRIVE_MAP && !(key===' ')) endDrive();
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CONTROLS
+═══════════════════════════════════════════════════════════════════════════ */
+function sendGoal() {
+  const x = parseFloat(document.getElementById('gx').value);
+  const y = parseFloat(document.getElementById('gy').value);
+  if (isNaN(x)||isNaN(y)) return;
+  fetch(`/sim/goal?x=${x}&y=${y}`, {method:'POST'}).catch(()=>{});
+}
+
+function sendTour() {
+  fetch('/sim/waypoints', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({waypoints: TOUR_WAYPOINTS})
+  }).catch(()=>{});
+}
+
+function resetSim() {
+  fetch('/sim/reset', {method:'POST'}).catch(()=>{});
+}
+</script>
+</body>
+</html>
