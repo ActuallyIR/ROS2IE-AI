@@ -1,33 +1,21 @@
-"""FastAPI web server for ROS2 Agent.
-
-Provides:
-  GET  /              → Web UI (HTML)
-  POST /chat          → Single-turn chat (JSON)
-  GET  /chat/stream   → SSE streaming chat
-  GET  /ros/topics    → List topics
-  GET  /ros/nodes     → List nodes
-  GET  /ros/status    → Robot health summary
-  GET  /health        → API health check
-"""
+"""FastAPI web server for ROS2 Agent."""
 
 from __future__ import annotations
 
 import asyncio
 import json
-import uuid
-from typing import AsyncIterator
+import pathlib
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ros2_agent.agent.core import ROS2Agent
 from ros2_agent.config.settings import Settings
 from ros2_agent.simulation.robot_sim import get_sim
-
-import pathlib
 
 STATIC_DIR = pathlib.Path(__file__).parent / "static"
 
@@ -44,6 +32,31 @@ class ChatResponse(BaseModel):
     session_id: str
 
 
+class WaypointsRequest(BaseModel):
+    waypoints: list[list[float]]
+
+
+class PhysicsUploadRequest(BaseModel):
+    name: str = "custom-physics"
+    config: dict
+
+
+class PolicyUploadRequest(BaseModel):
+    name: str = "custom-policy"
+    config: dict
+
+
+class PolicyRunRequest(BaseModel):
+    duration_s: float = 5.0
+
+
+class UniversalProfileRequest(BaseModel):
+    schema_version: str = "1.0.0"
+    name: str = "universal-robot-profile"
+    profile_type: str = "robot_profile"
+    profile: dict
+
+
 # ── App factory ───────────────────────────────────────────────────────────────
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -51,11 +64,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     agent = ROS2Agent(settings)
     sim = get_sim()  # physics singleton — shared with mock layer
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        sim.start_background()
+        yield
+        sim.stop()
+
     fast_app = FastAPI(
         title="ROS2 Agent API",
         description="LLM-powered agent for ROS 2 robots",
-        version="0.1.0",
+        version="0.2.0",
         docs_url="/docs",
+        lifespan=lifespan,
     )
 
     fast_app.add_middleware(
@@ -65,13 +85,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    @fast_app.on_event("startup")
-    async def _start_sim() -> None:
-        """Launch the physics simulation as a background asyncio task."""
-        sim.start_background()
-
-    # ── Routes ────────────────────────────────────────────────────────────────
 
     @fast_app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def root() -> str:
@@ -185,5 +198,111 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Directly publish a velocity command."""
         sim.set_cmd_vel(vx, omega)
         return {"ok": True, "vx": vx, "omega": omega}
+
+    @fast_app.post("/sim/waypoints")
+    async def sim_waypoints(req: WaypointsRequest) -> dict:
+        """Set a waypoint path for the robot to follow."""
+        waypoints = [(wp[0], wp[1]) for wp in req.waypoints]
+        sim.set_waypoints(waypoints)
+        return {"ok": True, "count": len(waypoints)}
+
+    @fast_app.get("/sim/events")
+    async def sim_events(limit: int = 50) -> dict:
+        """Return recent simulation events (log)."""
+        return {"events": sim.get_events(limit=limit)}
+
+    @fast_app.post("/sim/reset")
+    async def sim_reset() -> dict:
+        """Reset the simulation to initial state."""
+        s = sim.state
+        s.x = 1.5
+        s.y = 1.5
+        s.theta = 0.0
+        s.vx = 0.0
+        s.omega = 0.0
+        s.battery = 85.0
+        s.goal_x = None
+        s.goal_y = None
+        s.nav_active = False
+        s.nav_succeeded = False
+        s.path.clear()
+        s.full_path.clear()
+        s.waypoints.clear()
+        s.waypoint_index = 0
+        s.velocity_history.clear()
+        sim._cmd_vx = 0.0
+        sim._cmd_omega = 0.0
+        sim._manual_override = False
+        sim._escape_countdown = 0
+        sim._consec_escapes = 0
+        sim._events.clear()
+        sim._log_event("system", "Simulation reset")
+        return {"ok": True}
+
+    @fast_app.get("/sim/occupancy")
+    async def sim_occupancy(res: int = 20) -> dict:
+        """Return a downsampled occupancy grid for visualization."""
+        return {"grid": sim.get_occupancy_grid(resolution=res), "resolution": res}
+
+    @fast_app.get("/sim/full_path")
+    async def sim_full_path() -> dict:
+        """Return the full session path trail."""
+        return {"path": sim.get_full_path()}
+
+    @fast_app.post("/sim/physics/upload")
+    async def sim_upload_physics(req: PhysicsUploadRequest) -> dict:
+        """Upload and apply a physics profile for the simulator."""
+        try:
+            result = sim.apply_physics_profile(req.name, req.config)
+            return {"ok": True, **result}
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @fast_app.post("/sim/policy/upload")
+    async def sim_upload_policy(req: PolicyUploadRequest) -> dict:
+        """Upload a policy profile for later rollout."""
+        try:
+            result = sim.load_policy_profile(req.name, req.config)
+            return {"ok": True, **result}
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @fast_app.post("/sim/policy/run")
+    async def sim_run_policy(req: PolicyRunRequest) -> dict:
+        """Run the currently uploaded policy for a bounded duration."""
+        try:
+            result = await sim.run_loaded_policy(duration_s=req.duration_s)
+            return {"ok": True, **result}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @fast_app.post("/sim/profile/upload")
+    async def sim_upload_universal_profile(req: UniversalProfileRequest) -> dict:
+        """Upload one universal URDF/USD-inspired robot profile JSON.
+
+        Expected envelope:
+        {
+          "schema_version": "1.0.0",
+          "name": "...",
+          "profile_type": "robot_profile",
+          "profile": {
+            "physics": {...},
+            "visual": {...},
+            "kinematics": {...},
+            "sensors": [...],
+            "controllers": {...},
+            "policy": {...}
+          }
+        }
+        """
+        if req.profile_type != "robot_profile":
+            raise HTTPException(status_code=400, detail="profile_type must be 'robot_profile'")
+        try:
+            result = sim.load_universal_profile(req.model_dump())
+            return {"ok": True, **result}
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return fast_app

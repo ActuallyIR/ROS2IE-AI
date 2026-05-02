@@ -1,626 +1,1176 @@
 ﻿<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>ROS2 Agent</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<style>
-  :root {
-    --accent: #22d3ee;
-    --green: #22c55e;
-    --yellow: #eab308;
-    --orange: #f97316;
-    --red: #ef4444;
-    --bg: #020812;
-    --bg2: #0a0f18;
-    --bg3: #0d1117;
-    --bg4: #111827;
-    --border: #1a2332;
-  }
-  * { box-sizing: border-box; }
-  body { font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; background: var(--bg); }
-  .msg-user  { background: linear-gradient(135deg,#071828,#040e1a); border-left:3px solid var(--accent); }
-  .msg-agent { background: linear-gradient(135deg,#0a0f18,#0d1320); border-left:3px solid #253040; }
-  .tool-call { background: #040e09; border-left:3px solid #15803d; }
-  pre,code { font-family: 'JetBrains Mono','Fira Code',monospace; }
-  pre { white-space:pre-wrap; word-break:break-word; }
-  #chat-box { scroll-behavior:smooth; }
-  .status-dot { width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0; }
-  .s-live { background:var(--green); box-shadow:0 0 8px var(--green); animation:blink 2s infinite; }
-  .s-mock { background:var(--yellow); box-shadow:0 0 6px var(--yellow); animation:blink 3s infinite; }
-  .s-off  { background:#374151; }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
-  .spinner { display:inline-block;width:13px;height:13px;border:2px solid #1a2332;
-             border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle; }
-  @keyframes spin { to{transform:rotate(360deg)} }
-  ::-webkit-scrollbar { width:4px;height:4px; }
-  ::-webkit-scrollbar-track { background:transparent; }
-  ::-webkit-scrollbar-thumb { background:#1f2937;border-radius:4px; }
-  .badge { padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.05em; }
-  .badge-mock { background:#1c1400;color:var(--yellow);border:1px solid #2d2100; }
-  .badge-live { background:#001c0f;color:var(--green);border:1px solid #002d18; }
-  .tel-card { background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 10px; }
-  .qgoal { background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:3px 8px;
-           font-size:10px;color:#6b7280;cursor:pointer;transition:all .15s; }
-  .qgoal:hover { border-color:var(--accent);color:var(--accent);background:#071828; }
-  .view-btn { padding:2px 7px;border-radius:3px;font-size:10px;cursor:pointer;
-              border:1px solid var(--border);background:var(--bg3);color:#4b5563;transition:all .15s; }
-  .view-btn.active { border-color:var(--accent);color:var(--accent);background:#071828; }
-  .msg-fade { animation:fadeIn .2s ease; }
-  @keyframes fadeIn { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none} }
-  .nav-idle   { color:#4b5563; }
-  .nav-moving { color:var(--accent); }
-  .nav-escape { color:var(--yellow); }
-  .nav-done   { color:var(--green); }
-  .dpad-btn {
-    background:var(--bg4);color:#6b7280;border:1px solid var(--border);border-radius:6px;
-    width:38px;height:32px;font-size:13px;cursor:pointer;transition:all .1s;
-    display:flex;align-items:center;justify-content:center;user-select:none;
-  }
-  .dpad-btn:hover { border-color:#374151;color:#9ca3af;background:#1a2332; }
-  .dpad-btn:active,.dpad-btn.pressed { background:#071828;border-color:var(--accent);color:var(--accent); }
-  .dpad-stop { color:#7f1d1d; }
-  .dpad-stop:hover { border-color:#991b1b;color:#ef4444;background:#1a0505; }
-  .hint-row { font-size:9px;color:#374151;line-height:1.8; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ROS2 Agent - React Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #020812; color: #e5e7eb; font-family: Inter, system-ui, -apple-system, sans-serif; }
+    .panel { background: #0a0f18; border: 1px solid #1a2332; border-radius: 10px; }
+  </style>
 </head>
-<body class="bg-[#020812] text-gray-100 h-screen flex flex-col overflow-hidden">
+<body class="h-screen overflow-hidden">
+  <div id="root" class="h-full"></div>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-<!-- Header -->
-<header class="bg-[#0a0f18] border-b border-[#1a2332] px-4 py-2.5 flex items-center gap-3 flex-shrink-0 z-20">
-  <div class="flex items-center gap-2.5">
-    <span class="text-2xl leading-none">&#x1F916;</span>
-    <div>
-      <div class="text-cyan-400 font-bold text-sm leading-none tracking-tight">ROS2 Agent</div>
-      <div class="text-[10px] text-gray-600 mt-0.5">LLM-powered robot control</div>
-    </div>
-  </div>
-  <div class="w-px h-6 bg-[#1a2332] mx-1"></div>
-  <div class="flex items-center gap-2.5">
-    <span id="mode-badge" class="badge badge-mock">MOCK</span>
-    <span class="flex items-center gap-1.5">
-      <span id="status-dot" class="status-dot s-mock"></span>
-      <span id="status-text" class="text-xs text-gray-500">Connecting...</span>
-    </span>
-  </div>
-  <div class="flex-1"></div>
-  <span id="stats-text" class="text-[11px] text-gray-600 font-mono hidden sm:block"></span>
-  <div class="w-px h-6 bg-[#1a2332] mx-1"></div>
-  <button onclick="showSimPanel()" id="sim-toggle-btn"
-    class="hidden text-gray-500 hover:text-cyan-400 transition text-xs px-2.5 py-1.5
-           bg-[#0d1117] rounded border border-[#1a2332] hover:border-cyan-900 flex items-center gap-1.5">
-    &#x1F3AE; Sim
-  </button>
-  <button onclick="showInfoPanel()"
-    class="text-gray-600 hover:text-cyan-400 transition p-1.5 bg-[#0d1117] rounded border border-[#1a2332] hover:border-cyan-900" title="ROS 2 Info">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-    </svg>
-  </button>
-</header>
+  <script type="text/babel">
+    const { useEffect, useMemo, useRef, useState } = React;
 
-<!-- Body -->
-<div class="flex flex-1 overflow-hidden">
+    const QUICK_COMMANDS = [
+      { name: "Drive Home", query: "navigate the robot to home position (1.5, 1.5)" },
+      { name: "Go Center", query: "navigate the robot to centre (5, 5)" },
+      { name: "Check Battery", query: "what is the battery level?" },
+      { name: "List Topics", query: "what topics are active?" },
+      { name: "List Nodes", query: "list all active ROS 2 nodes" },
+      { name: "Diagnostics", query: "run ros2 doctor diagnostics" },
+      { name: "List Services", query: "what services are available?" },
+      { name: "Recent Errors", query: "show recent error messages" }
+    ];
 
-  <!-- Chat -->
-  <main class="flex flex-col flex-1 overflow-hidden min-w-0">
-    <div id="chat-box" class="flex-1 overflow-y-auto px-4 py-4 space-y-2.5">
-      <div class="msg-agent rounded-lg px-4 py-3 text-xs msg-fade">
-        <div class="flex items-center gap-2 mb-2">
-          <span class="text-cyan-400 font-semibold">&#x1F916; ROS2 Agent</span>
-          <span class="text-gray-700 text-[10px]">v0.1.0 ready</span>
-        </div>
-        <div class="text-gray-400 leading-relaxed mb-2">Ask me anything about your ROS 2 robot in plain English.</div>
-        <div class="grid grid-cols-2 gap-1">
-          <span class="text-cyan-500/70 cursor-pointer hover:text-cyan-400 transition" onclick="fillInput(this)">- What topics are active?</span>
-          <span class="text-cyan-500/70 cursor-pointer hover:text-cyan-400 transition" onclick="fillInput(this)">- What is the battery level?</span>
-          <span class="text-cyan-500/70 cursor-pointer hover:text-cyan-400 transition" onclick="fillInput(this)">- Show recent error messages</span>
-          <span class="text-cyan-500/70 cursor-pointer hover:text-cyan-400 transition" onclick="fillInput(this)">- Navigate to (5, 5)</span>
-        </div>
-      </div>
-    </div>
-    <div class="border-t border-[#1a2332] bg-[#0a0f18] px-4 py-3 flex gap-2 flex-shrink-0">
-      <input id="msg-input" type="text" placeholder="Ask anything about your robot..."
-        class="flex-1 bg-[#0d1117] text-gray-200 rounded-lg px-4 py-2.5 text-sm
-               border border-[#1a2332] focus:outline-none focus:border-cyan-800 placeholder-gray-700 transition"
-        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}" />
-      <button id="send-btn" onclick="sendMessage()"
-        class="bg-cyan-800 hover:bg-cyan-700 active:bg-cyan-900 text-white rounded-lg
-               px-5 py-2 text-sm font-medium transition disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2">
-        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
-        Send
-      </button>
-      <button onclick="clearChat()"
-        class="text-gray-600 hover:text-gray-400 px-2 py-2 rounded border border-transparent hover:border-[#1a2332] transition" title="Clear chat">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-        </svg>
-      </button>
-    </div>
-  </main>
-
-  <!-- Simulation panel -->
-  <aside id="sim-panel" class="w-[500px] border-l border-[#1a2332] bg-[#080d15] flex-col flex-shrink-0 flex overflow-y-auto">
-    <!-- Header -->
-    <div class="px-3 py-2 border-b border-[#1a2332] flex items-center justify-between flex-shrink-0 bg-[#0a0f18] sticky top-0 z-10">
-      <div class="flex items-center gap-3">
-        <span class="text-xs font-semibold text-cyan-400 flex items-center gap-1.5">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="3" stroke-width="2"/>
-            <path stroke-linecap="round" stroke-width="2" d="M12 2v3m0 14v3M2 12h3m14 0h3"/>
-          </svg>
-          Live Simulation
-        </span>
-        <span id="sim-status" class="text-[10px] text-gray-600 font-mono">connecting...</span>
-      </div>
-      <div class="flex items-center gap-1.5">
-        <button id="btn-scan" class="view-btn active" onclick="toggleScan(this)">Scan</button>
-        <button id="btn-grid" class="view-btn active" onclick="toggleGrid(this)">Grid</button>
-        <button id="btn-path" class="view-btn active" onclick="togglePath(this)">Path</button>
-        <div class="w-px h-4 bg-[#1a2332] mx-0.5"></div>
-        <button onclick="toggleSimPanel()" class="text-gray-600 hover:text-gray-400 text-xs p-1 rounded hover:bg-[#1a2332]">X</button>
-      </div>
-    </div>
-
-    <!-- Canvas -->
-    <div class="relative flex-shrink-0 px-3 pt-3 pb-1">
-      <canvas id="sim-canvas" width="468" height="468"
-        class="rounded-lg border border-[#1a2332] cursor-crosshair block w-full"
-        onclick="canvasClick(event)"
-        onmousemove="canvasMouseMove(event)"
-        onmouseleave="canvasMouseLeave()"></canvas>
-      <div id="canvas-coord" class="absolute bottom-4 left-5 text-[9px] text-[#2d4060] font-mono pointer-events-none"></div>
-      <div id="goal-toast"
-        class="hidden absolute top-5 left-1/2 -translate-x-1/2 z-20
-               bg-[#071828] border border-cyan-900 text-cyan-400 text-xs
-               rounded-lg px-3 py-1.5 pointer-events-none shadow-xl">Goal set</div>
-    </div>
-
-    <!-- Quick goals -->
-    <div class="px-3 pb-2 flex gap-1.5 flex-wrap flex-shrink-0 items-center">
-      <span class="text-[9px] text-gray-700 uppercase tracking-wider mr-0.5">Quick:</span>
-      <button class="qgoal" onclick="sendGoal(1.5,1.5)">Home</button>
-      <button class="qgoal" onclick="sendGoal(5,5)">Centre</button>
-      <button class="qgoal" onclick="sendGoal(8.5,8.5)">Far NE</button>
-      <button class="qgoal" onclick="sendGoal(8.5,1.5)">Far SE</button>
-      <button class="qgoal" onclick="sendGoal(1.5,8.5)">Far NW</button>
-    </div>
-
-    <!-- Telemetry -->
-    <div class="px-3 pb-2 border-t border-[#1a2332] pt-2 grid grid-cols-2 gap-2 flex-shrink-0">
-      <div class="tel-card col-span-2">
-        <div class="text-[9px] text-gray-600 uppercase tracking-widest mb-2">Position and Motion</div>
-        <div class="grid grid-cols-4 gap-2">
-          <div><div class="text-[9px] text-gray-600">X (m)</div><div id="tel-x" class="text-cyan-300 font-mono text-base leading-tight">--</div></div>
-          <div><div class="text-[9px] text-gray-600">Y (m)</div><div id="tel-y" class="text-cyan-300 font-mono text-base leading-tight">--</div></div>
-          <div><div class="text-[9px] text-gray-600">Heading</div><div id="tel-hdg" class="text-cyan-300 font-mono text-base leading-tight">--</div></div>
-          <div><div class="text-[9px] text-gray-600">omega</div><div id="tel-omega" class="text-cyan-300 font-mono text-base leading-tight">--</div></div>
-        </div>
-        <div class="mt-2.5">
-          <div class="flex justify-between text-[9px] text-gray-600 mb-1">
-            <span>Forward speed</span><span id="tel-vel" class="font-mono">0.00 m/s</span>
-          </div>
-          <div class="bg-[#1a2332] rounded-full h-1.5 overflow-hidden">
-            <div id="speed-bar" class="h-1.5 rounded-full transition-all duration-100" style="width:0%;background:var(--accent)"></div>
-          </div>
-        </div>
-      </div>
-      <div class="tel-card">
-        <div class="text-[9px] text-gray-600 uppercase tracking-widest mb-1.5">Battery</div>
-        <div id="tel-bat" class="text-2xl font-bold font-mono leading-none mb-2" style="color:var(--green)">--</div>
-        <div class="bg-[#1a2332] rounded-full h-2 overflow-hidden">
-          <div id="batt-bar" class="h-2 rounded-full transition-all duration-500" style="width:85%;background:var(--green)"></div>
-        </div>
-      </div>
-      <div class="tel-card">
-        <div class="text-[9px] text-gray-600 uppercase tracking-widest mb-1.5">Navigation</div>
-        <div id="tel-nav" class="text-xs font-mono nav-idle leading-snug">idle</div>
-        <div id="tel-dist" class="text-[10px] text-gray-600 mt-1 font-mono"></div>
-      </div>
-    </div>
-
-    <!-- Manual drive -->
-    <div class="px-3 py-2 border-t border-[#1a2332] flex-shrink-0">
-      <div class="text-[9px] text-gray-600 uppercase tracking-widest mb-2">Manual Drive</div>
-      <div class="flex gap-4 items-start">
-        <div class="flex flex-col items-center gap-1 flex-shrink-0">
-          <button class="dpad-btn" onmousedown="driveStart(0.45,0)" onmouseup="driveStop()" ontouchstart="driveStart(0.45,0)" ontouchend="driveStop()">&#x25B2;</button>
-          <div class="flex gap-1">
-            <button class="dpad-btn" onmousedown="driveStart(0,1.4)" onmouseup="driveStop()" ontouchstart="driveStart(0,1.4)" ontouchend="driveStop()">&#x25C4;</button>
-            <button class="dpad-btn dpad-stop" onmousedown="driveStop()" onmouseup="driveStop()">&#x25A0;</button>
-            <button class="dpad-btn" onmousedown="driveStart(0,-1.4)" onmouseup="driveStop()" ontouchstart="driveStart(0,-1.4)" ontouchend="driveStop()">&#x25BA;</button>
-          </div>
-          <button class="dpad-btn" onmousedown="driveStart(-0.45,0)" onmouseup="driveStop()" ontouchstart="driveStart(-0.45,0)" ontouchend="driveStop()">&#x25BC;</button>
-        </div>
-        <div class="hint-row flex-1 pt-1">
-          <div><span class="text-gray-500">W / Up</span> forward</div>
-          <div><span class="text-gray-500">S / Down</span> reverse</div>
-          <div><span class="text-gray-500">A / Left</span> turn left</div>
-          <div><span class="text-gray-500">D / Right</span> turn right</div>
-          <div><span class="text-gray-500">Space</span> stop</div>
-          <div class="mt-1 text-gray-700">Click canvas to navigate</div>
-        </div>
-      </div>
-    </div>
-  </aside>
-
-  <!-- ROS Info panel -->
-  <aside id="info-panel" class="hidden w-60 border-l border-[#1a2332] bg-[#0a0f18] flex-col overflow-y-auto">
-    <div class="px-3 py-2.5 border-b border-[#1a2332] flex items-center justify-between sticky top-0 bg-[#0a0f18] z-10">
-      <span class="text-xs font-semibold text-cyan-400">ROS 2 Info</span>
-      <button onclick="hideInfoPanel()" class="text-gray-600 hover:text-gray-300 p-0.5 rounded hover:bg-[#1a2332]">X</button>
-    </div>
-    <div class="p-3 space-y-4 text-xs">
-      <div>
-        <div class="flex items-center justify-between text-[10px] text-gray-500 font-semibold mb-1.5 uppercase tracking-wide">
-          Nodes <button onclick="loadNodes()" class="text-cyan-700 hover:text-cyan-500 px-1.5 py-0.5 bg-[#0d1117] rounded border border-[#1a2332] hover:border-cyan-900 text-[10px]">refresh</button>
-        </div>
-        <div id="nodes-list" class="text-gray-600 italic text-[10px]">Click refresh</div>
-      </div>
-      <div>
-        <div class="flex items-center justify-between text-[10px] text-gray-500 font-semibold mb-1.5 uppercase tracking-wide">
-          Topics <button onclick="loadTopics()" class="text-cyan-700 hover:text-cyan-500 px-1.5 py-0.5 bg-[#0d1117] rounded border border-[#1a2332] hover:border-cyan-900 text-[10px]">refresh</button>
-        </div>
-        <input id="topic-filter" type="text" placeholder="filter..."
-          class="w-full bg-[#0d1117] border border-[#1a2332] rounded px-2 py-1 mb-1.5 text-[10px] text-gray-400 focus:outline-none focus:border-cyan-800 placeholder-gray-700"
-          oninput="filterTopics()" />
-        <div id="topics-list" class="text-gray-600 italic text-[10px]">Click refresh</div>
-      </div>
-      <div>
-        <div class="flex items-center justify-between text-[10px] text-gray-500 font-semibold mb-1.5 uppercase tracking-wide">
-          Services <button onclick="loadServices()" class="text-cyan-700 hover:text-cyan-500 px-1.5 py-0.5 bg-[#0d1117] rounded border border-[#1a2332] hover:border-cyan-900 text-[10px]">refresh</button>
-        </div>
-        <div id="services-list" class="text-gray-600 italic text-[10px]">Click refresh</div>
-      </div>
-    </div>
-  </aside>
-</div>
-
-<script>
-let sessionId = 'web-' + Math.random().toString(36).slice(2,9);
-let isStreaming = false;
-let allTopics = [];
-let showScan = true, showGrid = true, showPath = true;
-let simState = null, simWs = null, driveInterval = null, hoverCoord = null;
-
-async function pollStatus() {
-  try {
-    const d = await fetch('/ros/status').then(r=>r.json());
-    const dot = document.getElementById('status-dot');
-    const txt = document.getElementById('status-text');
-    const mode = document.getElementById('mode-badge');
-    const stats = document.getElementById('stats-text');
-    if (d.mock) {
-      dot.className='status-dot s-mock'; txt.textContent='Mock mode';
-      mode.textContent='MOCK'; mode.className='badge badge-mock';
-    } else {
-      dot.className='status-dot s-live'; txt.textContent='Live ROS 2';
-      mode.textContent='LIVE'; mode.className='badge badge-live';
+    function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+    function parseHexColor(hex, fallback) {
+      if (typeof hex !== "string") return fallback;
+      const h = hex.trim();
+      if (!/^#[0-9a-fA-F]{6}$/.test(h)) return fallback;
+      return parseInt(h.slice(1), 16);
     }
-    stats.textContent=d.node_count+' nodes - '+d.topic_count+' topics'+(d.battery_pct!=null?' - '+d.battery_pct+'%':'');
-  } catch {
-    document.getElementById('status-text').textContent='API offline';
-    document.getElementById('status-dot').className='status-dot s-off';
-  }
-}
-pollStatus(); setInterval(pollStatus,10000);
 
-function fillInput(el) {
-  document.getElementById('msg-input').value = el.textContent.replace(/^[-\s]*/,'');
-  document.getElementById('msg-input').focus();
-}
-function ts() {
-  return new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
-}
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-function mdLight(text) {
-  return escHtml(text)
-    .replace(/\*\*(.+?)\*\*/g,'<strong class="text-white">$1</strong>')
-    .replace(/`([^`\n]+)`/g,'<code class="bg-[#1a2332] text-cyan-300 rounded px-1 text-[10px] font-mono">$1</code>')
-    .replace(/\n/g,'<br>');
-}
-function appendMsg(role, html) {
-  const box = document.getElementById('chat-box');
-  const div = document.createElement('div');
-  const isUser = role==='user';
-  div.className=(isUser?'msg-user':'msg-agent')+' rounded-lg px-4 py-3 text-xs msg-fade';
-  div.innerHTML='<div class="flex items-center gap-2 mb-1.5"><span class="'+(isUser?'text-green-400':'text-cyan-400')+' font-semibold">'+(isUser?'You':'Agent')+'</span><span class="text-gray-700 text-[9px] font-mono">'+ts()+'</span></div><div class="text-gray-300 leading-relaxed">'+html+'</div>';
-  box.appendChild(div); box.scrollTop=box.scrollHeight;
-  return div.querySelector('.text-gray-300');
-}
-function appendToolCall(name, args) {
-  const box = document.getElementById('chat-box');
-  const div = document.createElement('div');
-  div.className='tool-call rounded-lg px-3 py-1.5 text-[11px] font-mono msg-fade';
-  const a=Object.entries(args).map(([k,v])=>'<span class="text-gray-500">'+k+'=</span><span class="text-yellow-500/80">'+JSON.stringify(v)+'</span>').join('<span class="text-gray-600">, </span>');
-  div.innerHTML='<span class="text-green-500">+</span> <span class="text-green-400 font-semibold">'+name+'</span><span class="text-gray-600">(</span>'+a+'<span class="text-gray-600">)</span>';
-  box.appendChild(div); box.scrollTop=box.scrollHeight;
-}
-async function sendMessage() {
-  if(isStreaming) return;
-  const inp=document.getElementById('msg-input');
-  const msg=inp.value.trim(); if(!msg) return;
-  inp.value=''; inp.disabled=true;
-  document.getElementById('send-btn').disabled=true; isStreaming=true;
-  appendMsg('user',escHtml(msg));
-  const body=appendMsg('agent','<span class="spinner"></span>');
-  let buf='',first=true;
-  try {
-    const es=new EventSource('/chat/stream?message='+encodeURIComponent(msg)+'&session_id='+encodeURIComponent(sessionId));
-    es.onmessage=e=>{
-      const ev=JSON.parse(e.data);
-      if(ev.kind==='tool_call') appendToolCall(ev.data.name,ev.data.args||{});
-      else if(ev.kind==='text'){
-        if(first){body.innerHTML='';first=false;}
-        buf+=ev.data; body.innerHTML=mdLight(buf);
-        document.getElementById('chat-box').scrollTop=document.getElementById('chat-box').scrollHeight;
-      } else if(ev.kind==='done'||ev.kind==='error'){
-        es.close();
-        if(ev.kind==='error') body.innerHTML='<span class="text-red-400">Error: '+escHtml(ev.data)+'</span>';
-        doneSending();
+    function App() {
+      const [status, setStatus] = useState({ status: "loading", mock: true, provider: "-" });
+      const [rosStatus, setRosStatus] = useState({ node_count: 0, topic_count: 0, battery_pct: 0 });
+      const [topics, setTopics] = useState([]);
+      const [nodes, setNodes] = useState([]);
+      const [services, setServices] = useState([]);
+      const [events, setEvents] = useState([]);
+      const [message, setMessage] = useState("");
+      const [streaming, setStreaming] = useState(false);
+      const [messages, setMessages] = useState([
+        { role: "agent", text: "Feature-complete React dashboard is ready. Ask me anything about your ROS 2 robot." }
+      ]);
+
+      const [showInfo, setShowInfo] = useState(false);
+      const [showEvents, setShowEvents] = useState(false);
+      const [showPalette, setShowPalette] = useState(false);
+      const [showHelp, setShowHelp] = useState(false);
+      const [paletteQuery, setPaletteQuery] = useState("");
+      const [paletteIndex, setPaletteIndex] = useState(0);
+
+      const [sim, setSim] = useState(null);
+      const [occupancy, setOccupancy] = useState(null);
+      const [showGrid, setShowGrid] = useState(true);
+      const [showScan, setShowScan] = useState(true);
+      const [showPath, setShowPath] = useState(true);
+      const [showOcc, setShowOcc] = useState(false);
+      const [viewMode, setViewMode] = useState("3d");
+      const [cameraMode, setCameraMode] = useState("overview");
+      const [cameraStatus, setCameraStatus] = useState("");
+      const [drive, setDrive] = useState({ vx: 0, omega: 0 });
+      const [physicsUploadStatus, setPhysicsUploadStatus] = useState("");
+      const [policyUploadStatus, setPolicyUploadStatus] = useState("");
+      const [policyRunStatus, setPolicyRunStatus] = useState("");
+
+      const sessionId = useMemo(() => "web-" + Math.random().toString(36).slice(2, 9), []);
+      const scrollRef = useRef(null);
+      const simCanvasRef = useRef(null);
+      const threeMountRef = useRef(null);
+      const threeCtxRef = useRef(null);
+      const latestSimRef = useRef(null);
+      const velCanvasRef = useRef(null);
+      const wsRef = useRef(null);
+      const driveTimerRef = useRef(null);
+      const occupiedRefreshTick = useRef(0);
+
+      const filteredCommands = QUICK_COMMANDS.filter((c) =>
+        c.name.toLowerCase().includes(paletteQuery.toLowerCase())
+      );
+
+      useEffect(() => {
+        const poll = async () => {
+          try {
+            const h = await fetch("/health").then((r) => r.json());
+            const s = await fetch("/ros/status").then((r) => r.json());
+            setStatus(h);
+            setRosStatus(s);
+          } catch {
+            setStatus({ status: "offline", mock: true, provider: "unreachable" });
+          }
+        };
+        poll();
+        const t = setInterval(poll, 2500);
+        return () => clearInterval(t);
+      }, []);
+
+      useEffect(() => {
+        wsRef.current = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/sim");
+        wsRef.current.onmessage = (evt) => {
+          try { setSim(JSON.parse(evt.data)); } catch {}
+        };
+        return () => { if (wsRef.current) wsRef.current.close(); };
+      }, []);
+
+      useEffect(() => {
+        if (!scrollRef.current) return;
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }, [messages, streaming]);
+
+      useEffect(() => {
+        latestSimRef.current = sim;
+      }, [sim]);
+
+      useEffect(() => {
+        if (!showInfo) return;
+        const load = async () => {
+          try {
+            const [t, n, s] = await Promise.all([
+              fetch("/ros/topics").then((r) => r.json()),
+              fetch("/ros/nodes").then((r) => r.json()),
+              fetch("/ros/services").then((r) => r.json())
+            ]);
+            setTopics(t.topics || []);
+            setNodes(n.nodes || []);
+            setServices(s.services || []);
+          } catch {}
+        };
+        load();
+      }, [showInfo]);
+
+      useEffect(() => {
+        if (!showEvents) return;
+        const load = async () => {
+          try {
+            const d = await fetch("/sim/events?limit=60").then((r) => r.json());
+            setEvents(d.events || []);
+          } catch {}
+        };
+        load();
+        const t = setInterval(load, 2000);
+        return () => clearInterval(t);
+      }, [showEvents]);
+
+      useEffect(() => {
+        const onKey = (e) => {
+          if (e.ctrlKey && e.key.toLowerCase() === "k") { e.preventDefault(); setShowPalette(true); return; }
+          if (e.ctrlKey && e.key.toLowerCase() === "i") { e.preventDefault(); setShowInfo((v) => !v); return; }
+          if (e.ctrlKey && e.key.toLowerCase() === "l") { e.preventDefault(); setShowEvents((v) => !v); return; }
+          if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "c") { e.preventDefault(); clearChat(); return; }
+          if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "r") { e.preventDefault(); resetSim(); return; }
+          if (e.key === "?") { setShowHelp((v) => !v); return; }
+          if (e.key === "Escape") { setShowPalette(false); setShowHelp(false); return; }
+          if (document.activeElement && document.activeElement.tagName === "INPUT") return;
+
+          const driveMap = {
+            w: [0.45, 0], a: [0, 1.4], s: [-0.45, 0], d: [0, -1.4],
+            ArrowUp: [0.45, 0], ArrowLeft: [0, 1.4], ArrowDown: [-0.45, 0], ArrowRight: [0, -1.4], " ": [0, 0]
+          };
+          const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+          if (driveMap[key]) {
+            const [vx, omega] = driveMap[key];
+            if (vx === 0 && omega === 0) endDrive(); else beginDrive(vx, omega);
+          }
+        };
+        const onUp = (e) => {
+          const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+          if (["w", "a", "s", "d", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight"].includes(key)) endDrive();
+        };
+        window.addEventListener("keydown", onKey);
+        window.addEventListener("keyup", onUp);
+        return () => {
+          window.removeEventListener("keydown", onKey);
+          window.removeEventListener("keyup", onUp);
+        };
+      }, []);
+
+      useEffect(() => {
+        const c = simCanvasRef.current;
+        if (!c || !sim) return;
+        const ctx = c.getContext("2d");
+        const W = c.width;
+        const H = c.height;
+        const M = sim.map_size || 10;
+        const scale = W / M;
+        const w2c = (x, y) => [x * scale, H - y * scale];
+
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = "#050b13";
+        ctx.fillRect(0, 0, W, H);
+
+        if (showGrid) {
+          for (let i = 1; i < M; i++) {
+            const [px] = w2c(i, 0);
+            const [, py] = w2c(0, i);
+            ctx.strokeStyle = "rgba(255,255,255,0.06)";
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(W, py); ctx.stroke();
+          }
+        }
+
+        if (showOcc && occupancy) {
+          const res = occupancy.length || 0;
+          if (res > 0) {
+            const gs = W / res;
+            for (let gy = 0; gy < res; gy++) {
+              for (let gx = 0; gx < res; gx++) {
+                const v = occupancy[gy][gx];
+                if (v > 0.05) {
+                  ctx.fillStyle = `rgba(34,211,238,${clamp(v * 0.7, 0.05, 0.7)})`;
+                  ctx.fillRect(gx * gs, H - (gy + 1) * gs, gs, gs);
+                }
+              }
+            }
+          }
+        }
+
+        (sim.obstacles || []).forEach(([ox, oy, ow, oh]) => {
+          const [x, y] = w2c(ox, oy + oh);
+          ctx.fillStyle = "#1f2f47";
+          ctx.fillRect(x, y, ow * scale, oh * scale);
+        });
+
+        if (showPath && sim.full_path && sim.full_path.length > 1) {
+          ctx.strokeStyle = "rgba(34,211,238,0.28)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          sim.full_path.forEach((p, i) => {
+            const [x, y] = w2c(p[0], p[1]);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          });
+          ctx.stroke();
+        }
+
+        if (showPath && sim.path && sim.path.length > 1) {
+          ctx.strokeStyle = "rgba(34,211,238,0.85)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          sim.path.forEach((p, i) => {
+            const [x, y] = w2c(p[0], p[1]);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          });
+          ctx.stroke();
+        }
+
+        if (showScan && sim.lidar && sim.lidar.length) {
+          const n = sim.lidar.length;
+          for (let i = 0; i < n; i += 2) {
+            const r = sim.lidar[i];
+            const ang = sim.theta + (2 * Math.PI * i / n);
+            const [hx, hy] = w2c(sim.x + Math.cos(ang) * r, sim.y + Math.sin(ang) * r);
+            ctx.fillStyle = "rgba(34,211,238,0.5)";
+            ctx.beginPath();
+            ctx.arc(hx, hy, 1.2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        if (sim.waypoints && sim.waypoints.length) {
+          for (let i = 0; i < sim.waypoints.length; i++) {
+            const [wx, wy] = sim.waypoints[i];
+            const [x, y] = w2c(wx, wy);
+            ctx.strokeStyle = i < sim.waypoint_index ? "rgba(34,197,94,0.8)" : "rgba(249,115,22,0.8)";
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(x - 4, y - 4); ctx.lineTo(x + 4, y + 4); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x + 4, y - 4); ctx.lineTo(x - 4, y + 4); ctx.stroke();
+          }
+        }
+
+        if (sim.goal_x !== null && sim.goal_y !== null) {
+          const [gx, gy] = w2c(sim.goal_x, sim.goal_y);
+          ctx.strokeStyle = "#f97316";
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(gx, gy, 9, 0, Math.PI * 2); ctx.stroke();
+        }
+
+        const [rx, ry] = w2c(sim.x, sim.y);
+        ctx.save();
+        ctx.translate(rx, ry);
+        ctx.rotate(-sim.theta);
+        ctx.fillStyle = "#38bdf8";
+        ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#bae6fd";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(12, 0); ctx.stroke();
+        ctx.restore();
+      }, [sim, occupancy, showGrid, showScan, showPath, showOcc]);
+
+      useEffect(() => {
+        if (viewMode !== "3d") return () => {};
+        let initTimer = 0;
+        let raf = 0;
+        let renderer = null;
+        let teardown = null;
+        let initAttempts = 0;
+
+        const host = threeMountRef.current;
+        if (!host) return () => {};
+
+        const initThree = () => {
+          if (!threeMountRef.current) return false;
+          if (!window.THREE) return false;
+
+          const THREE = window.THREE;
+          const host = threeMountRef.current;
+          host.innerHTML = "";
+          const w = host.clientWidth || 468;
+          const h = host.clientHeight || 468;
+
+          try {
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+          } catch (err) {
+            setCameraStatus("3D camera unavailable (WebGL init failed). Switched to 2D map.");
+            setViewMode("2d");
+            return true;
+          }
+
+          renderer.setSize(w, h);
+          renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+          renderer.shadowMap.enabled = true;
+          renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+          renderer.toneMapping = THREE.ACESFilmicToneMapping;
+          renderer.toneMappingExposure = 1.05;
+          host.appendChild(renderer.domElement);
+
+          const scene = new THREE.Scene();
+          scene.background = new THREE.Color(0x060c14);
+          scene.fog = new THREE.Fog(0x060c14, 8, 25);
+
+          const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
+          camera.position.set(7.8, 7.0, 8.8);
+          camera.lookAt(5, 0, 5);
+
+          const hemi = new THREE.HemisphereLight(0xc8ddff, 0x0a1220, 0.62);
+          scene.add(hemi);
+
+          const sun = new THREE.DirectionalLight(0xffffff, 1.25);
+          sun.position.set(8, 12, 6);
+          sun.castShadow = true;
+          sun.shadow.mapSize.set(1024, 1024);
+          sun.shadow.camera.near = 1;
+          sun.shadow.camera.far = 35;
+          sun.shadow.camera.left = -12;
+          sun.shadow.camera.right = 12;
+          sun.shadow.camera.top = 12;
+          sun.shadow.camera.bottom = -12;
+          scene.add(sun);
+
+          const rim = new THREE.PointLight(0x7cc7ff, 0.4, 18, 2.0);
+          rim.position.set(2, 3, 8.5);
+          scene.add(rim);
+
+          const checkerTexCanvas = document.createElement("canvas");
+          checkerTexCanvas.width = 512;
+          checkerTexCanvas.height = 512;
+          const checkerCtx = checkerTexCanvas.getContext("2d");
+          for (let y = 0; y < 16; y++) {
+            for (let x = 0; x < 16; x++) {
+              checkerCtx.fillStyle = (x + y) % 2 === 0 ? "#2a2f35" : "#23282e";
+              checkerCtx.fillRect(x * 32, y * 32, 32, 32);
+            }
+          }
+          const checkerTex = new THREE.CanvasTexture(checkerTexCanvas);
+          checkerTex.wrapS = THREE.RepeatWrapping;
+          checkerTex.wrapT = THREE.RepeatWrapping;
+          checkerTex.repeat.set(3.2, 3.2);
+          checkerTex.anisotropy = 8;
+
+          const floorMat = new THREE.MeshStandardMaterial({
+            color: 0x2a3037, roughness: 0.78, metalness: 0.15, map: checkerTex
+          });
+          const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), floorMat);
+          floor.rotation.x = -Math.PI / 2;
+          floor.receiveShadow = true;
+          scene.add(floor);
+
+          const grid = new THREE.GridHelper(10, 20, 0x425a74, 0x273545);
+          grid.position.y = 0.001;
+          grid.material.opacity = 0.45;
+          grid.material.transparent = true;
+          scene.add(grid);
+
+          const walls = new THREE.Group();
+          const wallMat = new THREE.MeshStandardMaterial({ color: 0x2f3d4e, roughness: 0.78, metalness: 0.12 });
+          const wallGeomH = new THREE.BoxGeometry(10, 0.55, 0.15);
+          const wallGeomV = new THREE.BoxGeometry(0.15, 0.55, 10);
+          [
+            [5, 0.27, 0.03, wallGeomH],
+            [5, 0.27, 9.97, wallGeomH],
+            [0.03, 0.27, 5, wallGeomV],
+            [9.97, 0.27, 5, wallGeomV]
+          ].forEach(([x, y, z, g]) => {
+            const m = new THREE.Mesh(g, wallMat);
+            m.position.set(x, y, z);
+            m.castShadow = true;
+            m.receiveShadow = true;
+            walls.add(m);
+          });
+          scene.add(walls);
+
+          const obstacles = new THREE.Group();
+          const obstacleMat = new THREE.MeshStandardMaterial({
+            color: 0x4f637b, roughness: 0.65, metalness: 0.25
+          });
+          scene.add(obstacles);
+
+          const robot = new THREE.Group();
+          const chassis = new THREE.Mesh(
+            new THREE.BoxGeometry(0.42, 0.16, 0.34),
+            new THREE.MeshStandardMaterial({ color: 0x87a9c9, roughness: 0.35, metalness: 0.35 })
+          );
+          chassis.position.y = 0.18;
+          chassis.castShadow = true;
+          chassis.receiveShadow = true;
+          robot.add(chassis);
+
+          const top = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.11, 0.11, 0.08, 24),
+            new THREE.MeshStandardMaterial({ color: 0x3e5f85, roughness: 0.45, metalness: 0.25 })
+          );
+          top.position.y = 0.30;
+          top.castShadow = true;
+          robot.add(top);
+
+          const sensor = new THREE.Mesh(
+            new THREE.SphereGeometry(0.035, 20, 20),
+            new THREE.MeshStandardMaterial({ color: 0xb8ebff, emissive: 0x7fd4ff, emissiveIntensity: 0.45, roughness: 0.2, metalness: 0.1 })
+          );
+          sensor.position.set(0.16, 0.23, 0.0);
+          robot.add(sensor);
+
+          const wheelMat = new THREE.MeshStandardMaterial({ color: 0x151b24, roughness: 0.88, metalness: 0.15 });
+          const wheelGeom = new THREE.CylinderGeometry(0.07, 0.07, 0.035, 20);
+          const wheelL = new THREE.Mesh(wheelGeom, wheelMat);
+          wheelL.rotation.z = Math.PI / 2;
+          wheelL.position.set(0.0, 0.08, -0.16);
+          wheelL.castShadow = true;
+          robot.add(wheelL);
+          const wheelR = wheelL.clone();
+          wheelR.position.z = 0.16;
+          robot.add(wheelR);
+
+          const antenna = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.008, 0.008, 0.11, 10),
+            new THREE.MeshStandardMaterial({ color: 0xdde8f7, roughness: 0.22, metalness: 0.75 })
+          );
+          antenna.position.set(-0.12, 0.38, 0.0);
+          robot.add(antenna);
+
+          const bumper = new THREE.Mesh(
+            new THREE.TorusGeometry(0.20, 0.01, 12, 36),
+            new THREE.MeshStandardMaterial({ color: 0x101826, roughness: 0.85, metalness: 0.1 })
+          );
+          bumper.rotation.x = Math.PI / 2;
+          bumper.position.y = 0.1;
+          robot.add(bumper);
+
+          const contactShadow = new THREE.Mesh(
+            new THREE.CircleGeometry(0.28, 36),
+            new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 })
+          );
+          contactShadow.rotation.x = -Math.PI / 2;
+          contactShadow.position.y = 0.005;
+          robot.add(contactShadow);
+          robot.userData.wheels = [wheelL, wheelR];
+          scene.add(robot);
+
+          const goal = new THREE.Mesh(
+            new THREE.TorusGeometry(0.13, 0.015, 12, 30),
+            new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0x7a3b05, emissiveIntensity: 0.35 })
+          );
+          goal.rotation.x = -Math.PI / 2;
+          goal.position.set(5, 0.03, 5);
+          goal.visible = false;
+          scene.add(goal);
+
+          const pathLine = new THREE.Line(
+            new THREE.BufferGeometry(),
+            new THREE.LineBasicMaterial({ color: 0x33d9ff, transparent: true, opacity: 0.75 })
+          );
+          scene.add(pathLine);
+
+          const profileProxy = new THREE.Group();
+          profileProxy.position.set(8.5, 0, 1.4);
+          scene.add(profileProxy);
+
+          let camYaw = 0.74;
+          let camPitch = 0.92;
+          let camDist = 12.6;
+          let dragging = false;
+          let lastMX = 0;
+          let lastMY = 0;
+          const mapCenter = new THREE.Vector3(5, 0.25, 5);
+          const camTarget = new THREE.Vector3(5, 0.25, 5);
+          const camGoal = new THREE.Vector3(5, 0.25, 5);
+
+          const onPointerDown = (e) => {
+            dragging = true;
+            lastMX = e.clientX;
+            lastMY = e.clientY;
+          };
+          const onPointerMove = (e) => {
+            if (!dragging) return;
+            const dx = e.clientX - lastMX;
+            const dy = e.clientY - lastMY;
+            lastMX = e.clientX;
+            lastMY = e.clientY;
+            camYaw -= dx * 0.005;
+            camPitch = Math.max(0.15, Math.min(1.2, camPitch - dy * 0.005));
+          };
+          const onPointerUp = () => {
+            dragging = false;
+          };
+          const onWheel = (e) => {
+            e.preventDefault();
+            camDist = Math.max(9.5, Math.min(18.0, camDist + e.deltaY * 0.01));
+          };
+
+          host.addEventListener("pointerdown", onPointerDown);
+          host.addEventListener("pointermove", onPointerMove);
+          window.addEventListener("pointerup", onPointerUp);
+          host.addEventListener("wheel", onWheel, { passive: false });
+
+          const resetCamera = () => {
+            camYaw = 0.74;
+            camPitch = 0.92;
+            camDist = 12.6;
+            camGoal.set(5, 0.25, 5);
+            camTarget.set(5, 0.25, 5);
+          };
+          host.addEventListener("dblclick", resetCamera);
+
+          const onResize = () => {
+            const nw = host.clientWidth || 468;
+            const nh = host.clientHeight || 468;
+            renderer.setSize(nw, nh);
+            camera.aspect = nw / nh;
+            camera.updateProjectionMatrix();
+          };
+          window.addEventListener("resize", onResize);
+
+          const tick = () => {
+            raf = requestAnimationFrame(tick);
+            const live = latestSimRef.current;
+            if (live && cameraMode === "follow") {
+              camGoal.set(
+                0.55 * mapCenter.x + 0.45 * live.x,
+                0.24,
+                0.55 * mapCenter.z + 0.45 * live.y
+              );
+              camGoal.x = Math.max(2.8, Math.min(7.2, camGoal.x));
+              camGoal.z = Math.max(2.8, Math.min(7.2, camGoal.z));
+            } else {
+              camGoal.copy(mapCenter);
+            }
+            camTarget.lerp(camGoal, 0.06);
+            const px = camTarget.x + Math.cos(camYaw) * Math.cos(camPitch) * camDist;
+            const py = camTarget.y + Math.sin(camPitch) * camDist + 0.2;
+            const pz = camTarget.z + Math.sin(camYaw) * Math.cos(camPitch) * camDist;
+            camera.position.set(px, py, pz);
+            camera.lookAt(camTarget);
+            renderer.render(scene, camera);
+          };
+          tick();
+
+          setCameraStatus("");
+          threeCtxRef.current = {
+            renderer, scene, camera, robot, obstacles, goal, pathLine,
+            profileProxy, profileSignature: "", styledProfileName: ""
+          };
+
+          teardown = () => {
+            cancelAnimationFrame(raf);
+            host.removeEventListener("pointerdown", onPointerDown);
+            host.removeEventListener("pointermove", onPointerMove);
+            window.removeEventListener("pointerup", onPointerUp);
+            host.removeEventListener("wheel", onWheel);
+            host.removeEventListener("dblclick", resetCamera);
+            window.removeEventListener("resize", onResize);
+            renderer.dispose();
+            host.innerHTML = "";
+            threeCtxRef.current = null;
+          };
+
+          return true;
+        };
+
+        if (!initThree()) {
+          initAttempts = 1;
+          setCameraStatus("Starting 3D camera...");
+          initTimer = setInterval(() => {
+            if (initThree()) {
+              clearInterval(initTimer);
+              return;
+            }
+            initAttempts += 1;
+            if (initAttempts >= 20) {
+              clearInterval(initTimer);
+              setCameraStatus("3D camera script could not load. Switched to 2D map.");
+              setViewMode("2d");
+            }
+          }, 250);
+        }
+
+        return () => {
+          if (initTimer) clearInterval(initTimer);
+          if (teardown) teardown();
+        };
+      }, [cameraMode, viewMode]);
+
+      useEffect(() => {
+        const ctx = threeCtxRef.current;
+        if (!ctx || !sim) return;
+        const THREE = window.THREE;
+        const profile = sim.robot_profile || null;
+
+        ctx.robot.position.set(sim.x, 0.0, sim.y);
+        ctx.robot.rotation.y = -sim.theta;
+
+        const wheels = ctx.robot.userData.wheels || [];
+        wheels.forEach((w) => { w.rotation.x -= sim.vx * 0.25; });
+
+        ctx.goal.visible = sim.goal_x !== null && sim.goal_y !== null;
+        if (ctx.goal.visible) {
+          ctx.goal.position.set(sim.goal_x, 0.03, sim.goal_y);
+        }
+
+        const obs = sim.obstacles || [];
+        if (ctx.obstacles.children.length !== obs.length) {
+          ctx.obstacles.clear();
+          const mat = new THREE.MeshStandardMaterial({ color: 0x4f637b, roughness: 0.65, metalness: 0.25 });
+          obs.forEach(([ox, oy, ow, oh]) => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(ow, 0.45, oh), mat);
+            m.position.set(ox + ow / 2, 0.225, oy + oh / 2);
+            m.castShadow = true;
+            m.receiveShadow = true;
+            ctx.obstacles.add(m);
+          });
+        }
+
+        if (showPath && sim.path && sim.path.length > 1) {
+          const pts = sim.path.map((p) => new THREE.Vector3(p[0], 0.03, p[1]));
+          ctx.pathLine.geometry.dispose();
+          ctx.pathLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+          ctx.pathLine.visible = true;
+        } else {
+          ctx.pathLine.visible = false;
+        }
+
+        if (profile && profile.loaded) {
+          if (ctx.profileSignature !== profile.signature) {
+            ctx.profileSignature = profile.signature || "";
+            ctx.profileProxy.clear();
+            const primitives = (profile.collision && profile.collision.primitives) || [];
+            const matCfg = ((profile.visual || {}).materials || {}).joint || {};
+            const proxyColor = parseHexColor(matCfg.base_color, 0x6aa7d3);
+            const proxyMat = new THREE.MeshStandardMaterial({
+              color: proxyColor,
+              roughness: typeof matCfg.roughness === "number" ? clamp(matCfg.roughness, 0, 1) : 0.45,
+              metalness: typeof matCfg.metalness === "number" ? clamp(matCfg.metalness, 0, 1) : 0.2
+            });
+
+            let yCursor = 0.06;
+            let added = 0;
+            for (const p of primitives) {
+              if (!p || typeof p !== "object") continue;
+              let mesh = null;
+              const t = typeof p.type === "string" ? p.type.toLowerCase() : "";
+              if (t === "box" && Array.isArray(p.size) && p.size.length >= 3) {
+                const sx = Math.max(0.04, Number(p.size[0]) || 0.2);
+                const sz = Math.max(0.04, Number(p.size[1]) || 0.2);
+                const sy = Math.max(0.04, Number(p.size[2]) || 0.2);
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), proxyMat);
+                mesh.position.y = yCursor + sy * 0.5;
+                yCursor += sy + 0.03;
+              } else if (t === "capsule") {
+                const radius = Math.max(0.03, Number(p.radius) || 0.08);
+                const length = Math.max(0.05, Number(p.length) || 0.25);
+                if (THREE.CapsuleGeometry) {
+                  mesh = new THREE.Mesh(new THREE.CapsuleGeometry(radius, length, 6, 12), proxyMat);
+                } else {
+                  mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 16), proxyMat);
+                }
+                mesh.position.y = yCursor + radius + length * 0.5;
+                yCursor += (radius * 2 + length) + 0.03;
+              }
+              if (mesh) {
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                ctx.profileProxy.add(mesh);
+                added += 1;
+              }
+            }
+
+            if (added === 0) {
+              const fallback = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.14, 0.16, 0.55, 18),
+                proxyMat
+              );
+              fallback.position.y = 0.28;
+              fallback.castShadow = true;
+              fallback.receiveShadow = true;
+              ctx.profileProxy.add(fallback);
+            }
+          }
+
+          if (ctx.styledProfileName !== profile.name) {
+            ctx.styledProfileName = profile.name || "";
+            const mats = ((profile.visual || {}).materials || {});
+            const chassisCfg = mats.chassis || {};
+            const jointCfg = mats.joint || {};
+            const rubberCfg = mats.rubber || {};
+
+            const chassisColor = parseHexColor(chassisCfg.base_color, 0x87a9c9);
+            const topColor = parseHexColor(jointCfg.base_color, 0x3e5f85);
+            const wheelColor = parseHexColor(rubberCfg.base_color, 0x151b24);
+
+            const [chassis, top, sensor, wheelL, wheelR] = ctx.robot.children;
+            if (chassis && chassis.material) chassis.material.color.setHex(chassisColor);
+            if (top && top.material) top.material.color.setHex(topColor);
+            if (wheelL && wheelL.material) wheelL.material.color.setHex(wheelColor);
+            if (wheelR && wheelR.material) wheelR.material.color.setHex(wheelColor);
+            if (sensor && sensor.material && sensor.material.emissive) {
+              sensor.material.emissiveIntensity = 0.5;
+            }
+          }
+        }
+      }, [sim, showPath]);
+
+      useEffect(() => {
+        const c = velCanvasRef.current;
+        if (!c) return;
+        const ctx = c.getContext("2d");
+        const w = c.width;
+        const h = c.height;
+        ctx.fillStyle = "#050b13";
+        ctx.fillRect(0, 0, w, h);
+        const data = (sim && sim.velocity_history) || [];
+        if (data.length < 2) {
+          ctx.fillStyle = "#4b5563";
+          ctx.font = "11px monospace";
+          ctx.fillText("No velocity samples yet", 8, 24);
+          return;
+        }
+        const maxV = 0.55;
+        ctx.strokeStyle = "rgba(34,211,238,0.9)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 0; i < data.length; i++) {
+          const x = (i / (data.length - 1)) * w;
+          const y = h - clamp(data[i], 0, maxV) / maxV * h;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }, [sim]);
+
+      useEffect(() => {
+        if (!showOcc) return;
+        const load = async () => {
+          try {
+            const d = await fetch("/sim/occupancy?res=24").then((r) => r.json());
+            setOccupancy(d.grid || null);
+          } catch {}
+        };
+        load();
+      }, [showOcc]);
+
+      useEffect(() => {
+        if (!showOcc || !sim) return;
+        occupiedRefreshTick.current += 1;
+        if (occupiedRefreshTick.current % 15 !== 0) return;
+        fetch("/sim/occupancy?res=24")
+          .then((r) => r.json())
+          .then((d) => setOccupancy(d.grid || null))
+          .catch(() => {});
+      }, [sim, showOcc]);
+
+      function clearChat() {
+        setMessages([{ role: "agent", text: "Chat cleared." }]);
       }
-    };
-    es.onerror=()=>{es.close();if(first) body.innerHTML='<span class="text-red-400">Connection error</span>';doneSending();};
-  } catch(err){body.innerHTML='<span class="text-red-400">'+escHtml(err.message)+'</span>';doneSending();}
-}
-function doneSending(){
-  isStreaming=false;
-  const inp=document.getElementById('msg-input');
-  inp.disabled=false; document.getElementById('send-btn').disabled=false; inp.focus();
-}
-function clearChat(){document.getElementById('chat-box').innerHTML='';sessionId='web-'+Math.random().toString(36).slice(2,9);}
 
-function showInfoPanel(){const p=document.getElementById('info-panel');p.classList.remove('hidden');p.classList.add('flex');loadTopics();loadNodes();loadServices();}
-function hideInfoPanel(){const p=document.getElementById('info-panel');p.classList.add('hidden');p.classList.remove('flex');}
-async function loadNodes(){
-  const el=document.getElementById('nodes-list');el.innerHTML='<span class="spinner"></span>';
-  try{const d=await fetch('/ros/nodes').then(r=>r.json());el.innerHTML=d.nodes.map(n=>'<div class="py-0.5 text-gray-400 hover:text-cyan-300 cursor-pointer truncate" onclick="askAbout(\''+n+'\')" title="'+n+'">'+n+'</div>').join('')||'<span class="text-gray-600">None</span>';}catch{el.innerHTML='<span class="text-red-500">Failed</span>';}
-}
-async function loadTopics(){
-  const el=document.getElementById('topics-list');el.innerHTML='<span class="spinner"></span>';
-  try{const d=await fetch('/ros/topics').then(r=>r.json());allTopics=d.topics;renderTopics(allTopics);}catch{el.innerHTML='<span class="text-red-500">Failed</span>';}
-}
-function renderTopics(t){document.getElementById('topics-list').innerHTML=t.map(n=>'<div class="py-0.5 text-gray-400 hover:text-cyan-300 cursor-pointer truncate" onclick="askAbout(\''+n+'\')" title="'+n+'">'+n+'</div>').join('')||'<span class="text-gray-600">None</span>';}
-function filterTopics(){const q=document.getElementById('topic-filter').value.toLowerCase();renderTopics(q?allTopics.filter(t=>t.toLowerCase().includes(q)):allTopics);}
-async function loadServices(){
-  const el=document.getElementById('services-list');el.innerHTML='<span class="spinner"></span>';
-  try{const d=await fetch('/ros/services').then(r=>r.json());el.innerHTML=d.services.map(s=>'<div class="py-0.5 text-gray-400 truncate text-[10px]">'+s+'</div>').join('')||'<span class="text-gray-600">None</span>';}catch{el.innerHTML='<span class="text-red-500">Failed</span>';}
-}
-function askAbout(name){document.getElementById('msg-input').value='Tell me about '+name;document.getElementById('msg-input').focus();}
+      async function resetSim() {
+        await fetch("/sim/reset", { method: "POST" });
+      }
 
-function connectSimWs(){
-  const proto=location.protocol==='https:'?'wss':'ws';
-  simWs=new WebSocket(proto+'://'+location.host+'/ws/sim');
-  simWs.onopen=()=>{const el=document.getElementById('sim-status');el.textContent='live';el.style.color='#22c55e';};
-  simWs.onmessage=e=>{simState=JSON.parse(e.data);};
-  simWs.onclose=()=>{const el=document.getElementById('sim-status');el.textContent='reconnecting...';el.style.color='#374151';setTimeout(connectSimWs,2000);};
-  simWs.onerror=()=>simWs.close();
-}
-connectSimWs();
+      async function sendPatrol() {
+        const waypoints = [[1.5, 1.5], [5.0, 1.5], [8.5, 1.5], [8.5, 5.0], [8.5, 8.5], [5.0, 8.5], [1.5, 8.5], [1.5, 5.0]];
+        await fetch("/sim/waypoints", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ waypoints })
+        });
+      }
 
-const CS=468;
-function w2c(x,y,M){const sc=CS/M;return[x*sc,CS-y*sc];}
+      async function sendGoal(gx, gy) {
+        await fetch(`/sim/goal?x=${gx.toFixed(3)}&y=${gy.toFixed(3)}`, { method: "POST" });
+      }
 
-function drawFrame(){
-  requestAnimationFrame(drawFrame);
-  const canvas=document.getElementById('sim-canvas');if(!canvas)return;
-  const ctx=canvas.getContext('2d');
-  const s=simState;
-  if(!s){
-    ctx.fillStyle='#020812';ctx.fillRect(0,0,CS,CS);
-    ctx.fillStyle='#1a2332';ctx.font='12px monospace';ctx.textAlign='center';
-    ctx.fillText('Connecting to simulation...',CS/2,CS/2);return;
-  }
-  const M=s.map_size,sc=CS/M;
+      async function sendDrive(vx, omega) {
+        await fetch(`/sim/cmd_vel?vx=${vx}&omega=${omega}`, { method: "POST" });
+      }
 
-  ctx.fillStyle='#020812';ctx.fillRect(0,0,CS,CS);
+      function beginDrive(vx, omega) {
+        setDrive({ vx, omega });
+        if (driveTimerRef.current) clearInterval(driveTimerRef.current);
+        sendDrive(vx, omega);
+        driveTimerRef.current = setInterval(() => sendDrive(vx, omega), 120);
+      }
 
-  // Vignette
-  const vig=ctx.createRadialGradient(CS/2,CS/2,CS*0.3,CS/2,CS/2,CS*0.75);
-  vig.addColorStop(0,'transparent');vig.addColorStop(1,'rgba(0,0,0,0.35)');
-  ctx.fillStyle=vig;ctx.fillRect(0,0,CS,CS);
+      function endDrive() {
+        setDrive({ vx: 0, omega: 0 });
+        if (driveTimerRef.current) clearInterval(driveTimerRef.current);
+        driveTimerRef.current = null;
+        sendDrive(0, 0);
+      }
 
-  // Grid
-  if(showGrid){
-    ctx.lineWidth=1;
-    for(let i=1;i<M;i++){
-      ctx.strokeStyle=i%(M/2)===0?'rgba(255,255,255,0.04)':'rgba(255,255,255,0.018)';
-      const[px]=w2c(i,0,M);ctx.beginPath();ctx.moveTo(px,0);ctx.lineTo(px,CS);ctx.stroke();
-      const[,py]=w2c(0,i,M);ctx.beginPath();ctx.moveTo(0,py);ctx.lineTo(CS,py);ctx.stroke();
+      function onCanvasClick(e) {
+        if (!sim) return;
+        const rect = e.target.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * sim.map_size;
+        const y = sim.map_size - ((e.clientY - rect.top) / rect.height) * sim.map_size;
+        sendGoal(x, y);
+      }
+
+      async function sendMessage() {
+        const text = message.trim();
+        if (!text || streaming) return;
+        setMessage("");
+        setStreaming(true);
+        let targetIndex = 0;
+        setMessages((prev) => {
+          targetIndex = prev.length + 1;
+          return [...prev, { role: "user", text }, { role: "agent", text: "" }];
+        });
+
+        try {
+          const url = "/chat/stream?message=" + encodeURIComponent(text) + "&session_id=" + encodeURIComponent(sessionId);
+          const res = await fetch(url);
+          if (!res.ok || !res.body) throw new Error("Stream unavailable");
+          const reader = res.body.getReader();
+          const dec = new TextDecoder();
+          let buf = "";
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const chunks = buf.split("\n\n");
+            buf = chunks.pop() || "";
+            for (const chunk of chunks) {
+              if (!chunk.startsWith("data: ")) continue;
+              const payload = JSON.parse(chunk.slice(6));
+              if (payload.kind === "text") {
+                const textPart = typeof payload.data === "string" ? payload.data : "";
+                setMessages((prev) => {
+                  const out = [...prev];
+                  if (!out[targetIndex]) return out;
+                  out[targetIndex] = { ...out[targetIndex], text: (out[targetIndex].text || "") + textPart };
+                  return out;
+                });
+              } else if (payload.kind === "tool_call") {
+                const name = payload.data && payload.data.name ? payload.data.name : "tool";
+                setMessages((prev) => [...prev, { role: "meta", text: `tool call: ${name}` }]);
+              }
+            }
+          }
+        } catch (err) {
+          setMessages((prev) => [...prev, { role: "meta", text: "stream failed: " + String(err) }]);
+        } finally {
+          setStreaming(false);
+        }
+      }
+
+      function useCommand(cmd) {
+        setMessage(cmd.query);
+        setShowPalette(false);
+      }
+
+      async function uploadPhysicsFile(ev) {
+        const file = ev.target.files && ev.target.files[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          const isUniversalProfile =
+            parsed &&
+            typeof parsed === "object" &&
+            parsed.profile_type === "robot_profile" &&
+            parsed.profile &&
+            typeof parsed.profile === "object";
+
+          const endpoint = isUniversalProfile ? "/sim/profile/upload" : "/sim/physics/upload";
+          const payload = isUniversalProfile
+            ? parsed
+            : { name: file.name, config: parsed };
+
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.detail || "Upload failed");
+
+          if (isUniversalProfile) {
+            const profileName = body.profile || parsed.name || file.name;
+            const sections = Array.isArray(body.sections) ? body.sections.join(", ") : "n/a";
+            setPhysicsUploadStatus("Universal profile loaded: " + profileName + " | sections: " + sections);
+            if (body.policy_loaded) {
+              setPolicyUploadStatus("Policy loaded from universal profile");
+            }
+          } else {
+            setPhysicsUploadStatus("Physics loaded: " + (body.profile || file.name));
+          }
+        } catch (err) {
+          setPhysicsUploadStatus("Physics upload failed: " + String(err));
+        }
+      }
+
+      async function uploadPolicyFile(ev) {
+        const file = ev.target.files && ev.target.files[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const config = JSON.parse(text);
+          const res = await fetch("/sim/policy/upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: file.name, config })
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.detail || "Upload failed");
+          setPolicyUploadStatus("Policy loaded: " + (body.policy || file.name));
+        } catch (err) {
+          setPolicyUploadStatus("Policy upload failed: " + String(err));
+        }
+      }
+
+      async function runUploadedPolicy() {
+        try {
+          setPolicyRunStatus("Running policy...");
+          const res = await fetch("/sim/policy/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ duration_s: 6.0 })
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.detail || "Run failed");
+          setPolicyRunStatus("Policy run done: " + body.mode + " (" + body.duration_s + "s)");
+        } catch (err) {
+          setPolicyRunStatus("Policy run failed: " + String(err));
+        }
+      }
+
+      return (
+        <div className="h-full flex flex-col">
+          <header className="panel m-3 mb-2 px-4 py-2.5 flex items-center gap-3">
+            <div className="text-cyan-300 font-semibold">ROS2 Agent</div>
+            <div className="text-xs text-gray-400">API: {status.status}</div>
+            <div className="text-xs text-gray-400">Mock: {String(status.mock)}</div>
+            <div className="text-xs text-gray-400">Provider: {status.provider}</div>
+            <div className="ml-auto text-xs text-gray-500">
+              nodes {rosStatus.node_count} | topics {rosStatus.topic_count} | battery {rosStatus.battery_pct}%
+            </div>
+            <button className="text-xs px-2 py-1 bg-slate-800 rounded" onClick={() => setShowInfo((v) => !v)}>Info</button>
+            <button className="text-xs px-2 py-1 bg-slate-800 rounded" onClick={() => setShowEvents((v) => !v)}>Events</button>
+            <button className="text-xs px-2 py-1 bg-slate-800 rounded" onClick={() => setShowPalette(true)}>Cmd</button>
+          </header>
+
+          <div className="flex-1 min-h-0 px-3 pb-3 flex gap-3">
+            <section className="panel flex-1 min-w-0 flex flex-col">
+              <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2 text-sm">
+                {messages.map((m, i) => (
+                  <div key={i} className={m.role === "user"
+                    ? "bg-sky-950/40 border border-sky-900 rounded px-3 py-2"
+                    : m.role === "meta"
+                    ? "bg-emerald-950/30 border border-emerald-900 rounded px-3 py-2 text-emerald-300 text-xs"
+                    : "bg-slate-900/50 border border-slate-800 rounded px-3 py-2"}>
+                    <div className="text-xs opacity-70 mb-1">{m.role}</div>
+                    <div className="whitespace-pre-wrap">{m.text || (streaming ? "..." : "")}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="p-3 border-t border-slate-800 flex gap-2">
+                <input
+                  className="flex-1 bg-[#0d1117] border border-slate-700 rounded px-3 py-2 text-sm outline-none"
+                  placeholder="Ask anything... (Ctrl+K quick commands)"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) sendMessage(); }}
+                />
+                <button className="px-3 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm" onClick={clearChat}>Clear</button>
+                <button className="px-4 py-2 rounded bg-cyan-700 hover:bg-cyan-600 text-sm disabled:opacity-50" disabled={streaming} onClick={sendMessage}>
+                  {streaming ? "Streaming..." : "Send"}
+                </button>
+              </div>
+            </section>
+
+            <section className="panel w-[620px] flex-shrink-0 p-3 flex flex-col gap-2 min-h-0 overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-gray-400">Simulation (click map to set goal)</div>
+                <div className="text-[11px] flex gap-1">
+                  <button className={"px-2 py-1 rounded " + (viewMode === "3d" ? "bg-cyan-700" : "bg-slate-800")} onClick={() => setViewMode("3d")}>3D</button>
+                  <button className={"px-2 py-1 rounded " + (viewMode === "2d" ? "bg-cyan-700" : "bg-slate-800")} onClick={() => setViewMode("2d")}>2D</button>
+                  <button className={"px-2 py-1 rounded " + (cameraMode === "overview" ? "bg-cyan-700" : "bg-slate-800")} onClick={() => setCameraMode("overview")}>Overview</button>
+                  <button className={"px-2 py-1 rounded " + (cameraMode === "follow" ? "bg-cyan-700" : "bg-slate-800")} onClick={() => setCameraMode("follow")}>Follow</button>
+                  <button className={"px-2 py-1 rounded " + (showScan ? "bg-cyan-900" : "bg-slate-800")} onClick={() => setShowScan((v) => !v)}>Scan</button>
+                  <button className={"px-2 py-1 rounded " + (showGrid ? "bg-cyan-900" : "bg-slate-800")} onClick={() => setShowGrid((v) => !v)}>Grid</button>
+                  <button className={"px-2 py-1 rounded " + (showPath ? "bg-cyan-900" : "bg-slate-800")} onClick={() => setShowPath((v) => !v)}>Path</button>
+                  <button className={"px-2 py-1 rounded " + (showOcc ? "bg-cyan-900" : "bg-slate-800")} onClick={() => setShowOcc((v) => !v)}>Map</button>
+                </div>
+              </div>
+              {viewMode === "2d" ? (
+                <canvas
+                  ref={simCanvasRef}
+                  width="468"
+                  height="468"
+                  className="w-full rounded border border-slate-800 bg-[#050b13] cursor-crosshair"
+                  onClick={onCanvasClick}
+                />
+              ) : (
+                <div className="relative">
+                  <div ref={threeMountRef} className="w-full h-[560px] rounded border border-slate-800 overflow-hidden bg-[#050b13]" />
+                  {cameraStatus && (
+                    <div className="absolute top-2 left-2 text-[10px] text-amber-200 bg-amber-950/80 border border-amber-700 px-2 py-1 rounded">
+                      {cameraStatus}
+                    </div>
+                  )}
+                  <div className="absolute bottom-2 left-2 text-[10px] text-gray-300 bg-black/50 px-2 py-1 rounded">
+                    PBR 3D view (drag orbit, wheel zoom, double-click reset)
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-4 gap-2 text-xs">
+                <button className="px-2 py-2 rounded bg-slate-800 hover:bg-slate-700" onMouseDown={() => beginDrive(0.45, 0)} onMouseUp={endDrive} onMouseLeave={endDrive}>Forward</button>
+                <button className="px-2 py-2 rounded bg-slate-800 hover:bg-slate-700" onMouseDown={() => beginDrive(0, 1.4)} onMouseUp={endDrive} onMouseLeave={endDrive}>Left</button>
+                <button className="px-2 py-2 rounded bg-slate-800 hover:bg-slate-700" onMouseDown={() => beginDrive(0, -1.4)} onMouseUp={endDrive} onMouseLeave={endDrive}>Right</button>
+                <button className="px-2 py-2 rounded bg-slate-800 hover:bg-slate-700" onMouseDown={() => beginDrive(-0.45, 0)} onMouseUp={endDrive} onMouseLeave={endDrive}>Reverse</button>
+                <button className="px-2 py-2 rounded bg-red-900 hover:bg-red-800" onClick={endDrive}>Stop</button>
+                <button className="px-2 py-2 rounded bg-slate-800 hover:bg-slate-700" onClick={resetSim}>Reset</button>
+                <button className="px-2 py-2 rounded bg-slate-800 hover:bg-slate-700" onClick={() => sendGoal(5, 5)}>Center</button>
+                <button className="px-2 py-2 rounded bg-slate-800 hover:bg-slate-700" onClick={sendPatrol}>Patrol</button>
+              </div>
+              <canvas ref={velCanvasRef} width="468" height="40" className="w-full rounded border border-slate-800" />
+              <div className="text-xs text-gray-500 grid grid-cols-2 gap-1">
+                <div>pose: {sim ? `${sim.x.toFixed(2)}, ${sim.y.toFixed(2)}` : "-"}</div>
+                <div>heading: {sim ? `${((sim.theta * 180 / Math.PI + 360) % 360).toFixed(1)}deg` : "-"}</div>
+                <div>nav: {sim ? (sim.nav_active ? "moving" : sim.nav_succeeded ? "arrived" : "idle") : "-"}</div>
+                <div>drive: vx {drive.vx.toFixed(2)} | omega {drive.omega.toFixed(2)}</div>
+              </div>
+              <div className="mt-1 border border-slate-800 rounded p-2 text-xs bg-[#0d1117]">
+                <div className="text-cyan-300 font-semibold mb-1">Model/Policy Upload</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 cursor-pointer text-center">
+                    Upload Physics JSON
+                    <input type="file" accept=".json,application/json" className="hidden" onChange={uploadPhysicsFile} />
+                  </label>
+                  <label className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 cursor-pointer text-center">
+                    Upload Policy JSON
+                    <input type="file" accept=".json,application/json" className="hidden" onChange={uploadPolicyFile} />
+                  </label>
+                </div>
+                <div className="mt-2 text-[11px] text-gray-400">{physicsUploadStatus || "Physics: waiting for upload"}</div>
+                <div className="text-[11px] text-gray-400">{policyUploadStatus || "Policy: waiting for upload"}</div>
+                <div className="mt-2 flex items-center gap-2">
+                  <button className="px-2 py-1 rounded bg-cyan-800 hover:bg-cyan-700" onClick={runUploadedPolicy}>Run Uploaded Policy</button>
+                  <span className="text-[11px] text-gray-400">{policyRunStatus || "No rollout yet"}</span>
+                </div>
+                <div className="mt-1 text-[10px] text-gray-500">
+                  Policy JSON supports
+                  {" "}
+                  <code>{"{\"type\":\"cmd_vel_hold\",\"vx\":0.3,\"omega\":0.0}"}</code>
+                  {" "}
+                  or
+                  {" "}
+                  <code>{"{\"type\":\"waypoints\",\"waypoints\":[[1.5,1.5],[5,5]]}"}</code>.
+                </div>
+              </div>
+            </section>
+
+            {showEvents && (
+              <aside className="panel w-64 p-2 overflow-y-auto text-xs">
+                <div className="font-semibold text-yellow-300 mb-2">Event Log</div>
+                <div className="space-y-1">
+                  {events.slice().reverse().map((ev, i) => (
+                    <div key={i} className="border-b border-slate-800 pb-1">
+                      <div className="text-gray-500">{new Date((ev.ts || 0) * 1000).toLocaleTimeString()}</div>
+                      <div className="text-gray-300">{ev.msg}</div>
+                    </div>
+                  ))}
+                  {!events.length && <div className="text-gray-600">No events</div>}
+                </div>
+              </aside>
+            )}
+
+            {showInfo && (
+              <aside className="panel w-72 p-2 overflow-y-auto text-xs">
+                <div className="font-semibold text-cyan-300 mb-2">ROS 2 Info</div>
+                <div className="mb-3">
+                  <div className="text-gray-500 mb-1">Topics ({topics.length})</div>
+                  <div className="space-y-0.5 max-h-24 overflow-y-auto">{topics.map((t, i) => <div key={i} className="text-gray-300 truncate">{t}</div>)}</div>
+                </div>
+                <div className="mb-3">
+                  <div className="text-gray-500 mb-1">Nodes ({nodes.length})</div>
+                  <div className="space-y-0.5 max-h-24 overflow-y-auto">{nodes.map((n, i) => <div key={i} className="text-gray-300 truncate">{n}</div>)}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500 mb-1">Services ({services.length})</div>
+                  <div className="space-y-0.5 max-h-24 overflow-y-auto">{services.map((s, i) => <div key={i} className="text-gray-300 truncate">{s}</div>)}</div>
+                </div>
+              </aside>
+            )}
+          </div>
+
+          {showPalette && (
+            <div className="fixed inset-0 bg-black/60 flex items-start justify-center pt-24 z-40" onClick={() => setShowPalette(false)}>
+              <div className="panel w-[520px] p-2" onClick={(e) => e.stopPropagation()}>
+                <input
+                  autoFocus
+                  value={paletteQuery}
+                  onChange={(e) => { setPaletteQuery(e.target.value); setPaletteIndex(0); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setShowPalette(false);
+                    if (e.key === "ArrowDown") { e.preventDefault(); setPaletteIndex((v) => clamp(v + 1, 0, Math.max(0, filteredCommands.length - 1))); }
+                    if (e.key === "ArrowUp") { e.preventDefault(); setPaletteIndex((v) => clamp(v - 1, 0, Math.max(0, filteredCommands.length - 1))); }
+                    if (e.key === "Enter" && filteredCommands[paletteIndex]) useCommand(filteredCommands[paletteIndex]);
+                  }}
+                  className="w-full bg-[#0d1117] border border-slate-700 rounded px-3 py-2 text-sm outline-none"
+                  placeholder="Type command name..."
+                />
+                <div className="mt-2 max-h-72 overflow-y-auto space-y-1">
+                  {filteredCommands.map((c, i) => (
+                    <button key={c.name} className={"w-full text-left px-3 py-2 rounded text-sm " + (i === paletteIndex ? "bg-cyan-900 text-cyan-100" : "bg-slate-900 text-gray-300")} onClick={() => useCommand(c)}>
+                      {c.name}
+                    </button>
+                  ))}
+                  {!filteredCommands.length && <div className="text-gray-500 text-sm px-2 py-4">No command match.</div>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showHelp && (
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-40" onClick={() => setShowHelp(false)}>
+              <div className="panel w-[420px] p-4 text-sm" onClick={(e) => e.stopPropagation()}>
+                <div className="text-cyan-300 font-semibold mb-2">Keyboard Shortcuts</div>
+                <div className="space-y-1 text-gray-300">
+                  <div>Ctrl+K - command palette</div>
+                  <div>Ctrl+I - toggle info panel</div>
+                  <div>Ctrl+L - toggle event panel</div>
+                  <div>Ctrl+Shift+C - clear chat</div>
+                  <div>Ctrl+Shift+R - reset simulation</div>
+                  <div>W/A/S/D or arrows - drive</div>
+                  <div>Space - stop</div>
+                  <div>? - toggle this help</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
     }
-    ctx.fillStyle='#1e3050';ctx.font='8px monospace';ctx.textAlign='center';
-    for(let i=1;i<M;i++){const[px]=w2c(i,0,M);ctx.fillText(i+'m',px,CS-3);}
-    ctx.textAlign='right';
-    for(let i=1;i<M;i++){const[,py]=w2c(0,i,M);ctx.fillText(i+'m',16,py+3);}
-  }
 
-  // Room walls
-  ctx.shadowColor='rgba(30,80,150,0.5)';ctx.shadowBlur=12;
-  ctx.strokeStyle='#1e3a5f';ctx.lineWidth=2.5;
-  ctx.strokeRect(1.25,1.25,CS-2.5,CS-2.5);ctx.shadowBlur=0;
-
-  // Obstacles
-  for(const[ox,oy,ow,oh]of s.obstacles){
-    const[px,py]=w2c(ox,oy+oh,M);const pw=ow*sc,ph=oh*sc;
-    ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(px+4,py+4,pw,ph);
-    const g=ctx.createLinearGradient(px,py,px,py+ph);
-    g.addColorStop(0,'#1e2e44');g.addColorStop(1,'#111c2a');
-    ctx.fillStyle=g;ctx.fillRect(px,py,pw,ph);
-    ctx.strokeStyle='#253550';ctx.lineWidth=1;ctx.strokeRect(px,py,pw,ph);
-    ctx.strokeStyle='rgba(80,130,200,0.12)';ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+pw,py);ctx.stroke();
-    ctx.strokeStyle='rgba(255,255,255,0.04)';ctx.lineWidth=1;
-    for(let d2=0;d2<pw;d2+=8){ctx.beginPath();ctx.moveTo(px+d2,py);ctx.lineTo(px+d2,py+3);ctx.stroke();}
-  }
-
-  // LiDAR scan polygon
-  if(showScan&&s.lidar&&s.lidar.length>0){
-    const n=s.lidar.length;
-    ctx.beginPath();
-    for(let i=0;i<n;i++){
-      const angle=s.theta+(2*Math.PI*i/n);const r=s.lidar[i];
-      const[epx,epy]=w2c(s.x+Math.cos(angle)*r,s.y+Math.sin(angle)*r,M);
-      if(i===0)ctx.moveTo(epx,epy);else ctx.lineTo(epx,epy);
-    }
-    ctx.closePath();
-    const sg=ctx.createRadialGradient(...w2c(s.x,s.y,M),0,...w2c(s.x,s.y,M),3*sc);
-    sg.addColorStop(0,'rgba(34,211,238,0.08)');sg.addColorStop(1,'rgba(34,211,238,0.02)');
-    ctx.fillStyle=sg;ctx.fill();
-    ctx.strokeStyle='rgba(34,211,238,0.18)';ctx.lineWidth=0.8;ctx.stroke();
-    for(let i=0;i<n;i++){
-      const r=s.lidar[i];if(r>=s.map_size*0.59)continue;
-      const angle=s.theta+(2*Math.PI*i/n);
-      const[epx,epy]=w2c(s.x+Math.cos(angle)*r,s.y+Math.sin(angle)*r,M);
-      const prox=1-Math.min(1,r/3.5);
-      ctx.fillStyle=prox>0.5?'rgba(249,115,22,'+(0.2+prox*0.7)+')':'rgba(34,211,238,'+(0.15+prox*0.6)+')';
-      ctx.beginPath();ctx.arc(epx,epy,1+prox*2,0,Math.PI*2);ctx.fill();
-    }
-  }
-
-  // Path trail
-  if(showPath&&s.path&&s.path.length>1){
-    const len=s.path.length;
-    for(let i=1;i<len;i++){
-      const a=0.05+0.55*(i/len);
-      const[x1,y1]=w2c(s.path[i-1][0],s.path[i-1][1],M);
-      const[x2,y2]=w2c(s.path[i][0],s.path[i][1],M);
-      ctx.strokeStyle='rgba(34,197,94,'+a+')';ctx.lineWidth=1.8;
-      ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
-    }
-  }
-
-  // Goal
-  if(s.goal_x!==null&&s.goal_y!==null&&(s.nav_active||s.nav_succeeded)){
-    const[gx,gy]=w2c(s.goal_x,s.goal_y,M);const t=Date.now()/700;
-    if(s.nav_active){
-      ctx.strokeStyle='rgba(249,115,22,0.07)';ctx.lineWidth=4;
-      ctx.beginPath();ctx.arc(gx,gy,18+6*Math.abs(Math.sin(t)),0,Math.PI*2);ctx.stroke();
-      ctx.strokeStyle='rgba(249,115,22,0.18)';ctx.lineWidth=2;
-      ctx.beginPath();ctx.arc(gx,gy,9,0,Math.PI*2);ctx.stroke();
-    }
-    ctx.strokeStyle=s.nav_succeeded?'#22c55e':'#f97316';ctx.lineWidth=2.5;
-    const d=7;
-    ctx.beginPath();ctx.moveTo(gx-d,gy);ctx.lineTo(gx+d,gy);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(gx,gy-d);ctx.lineTo(gx,gy+d);ctx.stroke();
-    ctx.fillStyle=s.nav_succeeded?'#22c55e':'#f97316';
-    ctx.font='8px monospace';ctx.textAlign='left';
-    ctx.fillText('('+s.goal_x.toFixed(1)+','+s.goal_y.toFixed(1)+')',gx+10,gy-5);
-    if(s.nav_active){
-      const[rx2,ry2]=w2c(s.x,s.y,M);
-      ctx.strokeStyle='rgba(249,115,22,0.12)';ctx.lineWidth=1;ctx.setLineDash([4,7]);
-      ctx.beginPath();ctx.moveTo(rx2,ry2);ctx.lineTo(gx,gy);ctx.stroke();ctx.setLineDash([]);
-    }
-  }
-
-  // Robot
-  const[rx,ry]=w2c(s.x,s.y,M);const rr=Math.max(7,0.22*sc);
-  const rGlow=ctx.createRadialGradient(rx,ry,0,rx,ry,rr*3);
-  rGlow.addColorStop(0,'rgba(14,165,233,0.3)');rGlow.addColorStop(1,'transparent');
-  ctx.fillStyle=rGlow;ctx.beginPath();ctx.arc(rx,ry,rr*3,0,Math.PI*2);ctx.fill();
-  ctx.save();ctx.translate(rx,ry);ctx.rotate(-s.theta);
-  ctx.fillStyle='#1e3a6e';
-  ctx.fillRect(rr*0.35,-rr*1.15,rr*0.85,rr*0.42);
-  ctx.fillRect(rr*0.35,rr*0.72,rr*0.85,rr*0.42);
-  ctx.fillRect(-rr*1.1,-rr*1.15,rr*0.7,rr*0.42);
-  ctx.fillRect(-rr*1.1,rr*0.72,rr*0.7,rr*0.42);
-  ctx.beginPath();ctx.arc(0,0,rr,0,Math.PI*2);
-  const bg2=ctx.createRadialGradient(-rr*0.3,-rr*0.3,0,0,0,rr);
-  bg2.addColorStop(0,'#38bdf8');bg2.addColorStop(1,'#0369a1');
-  ctx.fillStyle=bg2;ctx.fill();ctx.strokeStyle='#7dd3fc';ctx.lineWidth=1.5;ctx.stroke();
-  ctx.fillStyle='#075985';ctx.beginPath();ctx.arc(0,0,rr*0.4,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#f0f9ff';ctx.beginPath();ctx.arc(rr*0.68,0,rr*0.22,0,Math.PI*2);ctx.fill();
-  ctx.restore();
-
-  // Hover coord
-  if(hoverCoord) document.getElementById('canvas-coord').textContent='('+hoverCoord[0].toFixed(2)+', '+hoverCoord[1].toFixed(2)+') m';
-
-  // Compass
-  const cx2=CS-26,cy2=CS-26,cr=17;
-  ctx.fillStyle='rgba(8,13,21,0.82)';ctx.beginPath();ctx.arc(cx2,cy2,cr+2,0,Math.PI*2);ctx.fill();
-  ctx.strokeStyle='#1e3050';ctx.lineWidth=1;ctx.beginPath();ctx.arc(cx2,cy2,cr,0,Math.PI*2);ctx.stroke();
-  ctx.fillStyle='#2d4060';ctx.font='7px sans-serif';ctx.textAlign='center';
-  ctx.fillText('N',cx2,cy2-cr+8);ctx.fillText('S',cx2,cy2+cr-2);
-  ctx.save();ctx.translate(cx2,cy2);ctx.rotate(-s.theta);
-  ctx.strokeStyle='#ef4444';ctx.lineWidth=1.5;
-  ctx.beginPath();ctx.moveTo(0,cr-5);ctx.lineTo(0,-cr+5);ctx.stroke();
-  ctx.fillStyle='#ef4444';ctx.beginPath();ctx.moveTo(0,-cr+5);ctx.lineTo(-2.5,2);ctx.lineTo(2.5,2);ctx.closePath();ctx.fill();
-  ctx.fillStyle='#374151';ctx.beginPath();ctx.moveTo(0,cr-5);ctx.lineTo(-2.5,-2);ctx.lineTo(2.5,-2);ctx.closePath();ctx.fill();
-  ctx.restore();
-
-  // Scale bar
-  const bw=sc;
-  ctx.fillStyle='rgba(8,13,21,0.65)';ctx.fillRect(8,CS-18,bw+12,14);
-  ctx.fillStyle='#253550';ctx.fillRect(12,CS-13,bw,4);
-  ctx.fillStyle='#7dd3fc';ctx.fillRect(12,CS-13,bw/2,4);
-  ctx.fillStyle='#374151';ctx.font='8px monospace';ctx.textAlign='center';
-  ctx.fillText('1 m',12+bw/2,CS-5);
-
-  // Telemetry update
-  const hdgDeg=((s.theta*180/Math.PI)%360+360)%360;
-  document.getElementById('tel-x').textContent=s.x.toFixed(2);
-  document.getElementById('tel-y').textContent=s.y.toFixed(2);
-  document.getElementById('tel-hdg').textContent=hdgDeg.toFixed(1)+'deg';
-  document.getElementById('tel-omega').textContent=s.omega.toFixed(2);
-  document.getElementById('tel-vel').textContent=Math.abs(s.vx).toFixed(2)+' m/s';
-  document.getElementById('speed-bar').style.width=Math.min(100,Math.abs(s.vx)/0.55*100)+'%';
-  document.getElementById('speed-bar').style.background=s.vx<-0.05?'#f97316':'#22d3ee';
-  const bat=s.battery;
-  const bc=bat>50?'#22c55e':bat>20?'#eab308':'#ef4444';
-  document.getElementById('tel-bat').textContent=bat.toFixed(0)+'%';
-  document.getElementById('tel-bat').style.color=bc;
-  document.getElementById('batt-bar').style.width=bat+'%';
-  document.getElementById('batt-bar').style.background=bc;
-  const nav=document.getElementById('tel-nav');const dist=document.getElementById('tel-dist');
-  if(s.nav_active&&s.escaping){nav.textContent='escaping obstacle';nav.className='text-xs font-mono nav-escape';dist.textContent='';}
-  else if(s.nav_active){const d=Math.hypot(s.goal_x-s.x,s.goal_y-s.y);nav.textContent='to ('+s.goal_x.toFixed(1)+','+s.goal_y.toFixed(1)+')';nav.className='text-xs font-mono nav-moving';dist.textContent=d.toFixed(2)+' m remaining';}
-  else if(s.nav_succeeded){nav.textContent='arrived';nav.className='text-xs font-mono nav-done';dist.textContent='';}
-  else{nav.textContent='idle';nav.className='text-xs font-mono nav-idle';dist.textContent='';}
-}
-drawFrame();
-
-function _cc(e){
-  const c=document.getElementById('sim-canvas');const r=c.getBoundingClientRect();
-  const cx=(e.clientX-r.left)*(c.width/r.width);const cy=(e.clientY-r.top)*(c.height/r.height);
-  const M=simState?simState.map_size:10;
-  return[Math.max(.3,Math.min(M-.3,(cx/CS)*M)),Math.max(.3,Math.min(M-.3,((CS-cy)/CS)*M))];
-}
-async function canvasClick(e){const[gx,gy]=_cc(e);await sendGoal(gx,gy);}
-function canvasMouseMove(e){if(!simState)return;hoverCoord=_cc(e);}
-function canvasMouseLeave(){hoverCoord=null;document.getElementById('canvas-coord').textContent='';}
-async function sendGoal(gx,gy){
-  await fetch('/sim/goal?x='+parseFloat(gx).toFixed(3)+'&y='+parseFloat(gy).toFixed(3),{method:'POST'});
-  const t=document.getElementById('goal-toast');
-  t.textContent='Goal to ('+parseFloat(gx).toFixed(2)+', '+parseFloat(gy).toFixed(2)+')';
-  t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),1600);
-}
-
-function toggleScan(b){showScan=!showScan;b.classList.toggle('active',showScan);}
-function toggleGrid(b){showGrid=!showGrid;b.classList.toggle('active',showGrid);}
-function togglePath(b){showPath=!showPath;b.classList.toggle('active',showPath);}
-
-function driveStart(vx,omega){driveStop();sendDrive(vx,omega);driveInterval=setInterval(()=>sendDrive(vx,omega),120);}
-function driveStop(){if(driveInterval){clearInterval(driveInterval);driveInterval=null;}sendDrive(0,0);}
-async function sendDrive(vx,omega){try{await fetch('/sim/cmd_vel?vx='+vx+'&omega='+omega,{method:'POST'});}catch{}}
-
-const _kd={};
-document.addEventListener('keydown',e=>{
-  if(document.activeElement.tagName==='INPUT')return;
-  if(_kd[e.key])return;_kd[e.key]=true;
-  const m={'w':[0.45,0],'a':[0,1.4],'s':[-0.45,0],'d':[0,-1.4],'ArrowUp':[0.45,0],'ArrowLeft':[0,1.4],'ArrowDown':[-0.45,0],'ArrowRight':[0,-1.4],' ':[0,0]};
-  if(m[e.key]){const[v,w]=m[e.key];sendDrive(v,w);e.preventDefault();}
-});
-document.addEventListener('keyup',e=>{
-  delete _kd[e.key];
-  if(!Object.keys(_kd).some(k=>['w','a','s','d','ArrowUp','ArrowLeft','ArrowDown','ArrowRight'].includes(k)))sendDrive(0,0);
-});
-
-function toggleSimPanel(){document.getElementById('sim-panel').classList.add('hidden');document.getElementById('sim-panel').classList.remove('flex');document.getElementById('sim-toggle-btn').classList.remove('hidden');}
-function showSimPanel(){document.getElementById('sim-panel').classList.remove('hidden');document.getElementById('sim-panel').classList.add('flex');document.getElementById('sim-toggle-btn').classList.add('hidden');}
-</script>
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
 </body>
 </html>

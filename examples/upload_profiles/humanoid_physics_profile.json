@@ -1,0 +1,11 @@
+{
+  "max_accel": 1.0,
+  "max_alpha": 2.2,
+  "control_latency_s": 0.14,
+  "rolling_resistance": 0.95,
+  "angular_damping": 1.25,
+  "slip_base": 0.02,
+  "slip_turn_gain": 0.045,
+  "motor_deadzone_vx": 0.04,
+  "motor_deadzone_omega": 0.1
+}

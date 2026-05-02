@@ -1,0 +1,132 @@
+{
+  "schema_version": "1.0.0",
+  "name": "humanoid_x1_realism_profile",
+  "profile_type": "robot_profile",
+  "metadata": {
+    "author": "robotics-oss",
+    "description": "Universal profile combining physics, visual, kinematics, sensors, controllers, and default policy.",
+    "units": {
+      "length": "m",
+      "mass": "kg",
+      "angle": "rad"
+    },
+    "tags": ["humanoid", "pbr", "sim-to-real", "universal-profile"]
+  },
+  "profile": {
+    "physics": {
+      "engine": {
+        "solver": "semi_implicit_euler",
+        "substeps": 4,
+        "dt": 0.05,
+        "gravity": [0.0, 0.0, -9.81]
+      },
+      "max_accel": 0.95,
+      "max_alpha": 2.0,
+      "control_latency_s": 0.14,
+      "rolling_resistance": 0.9,
+      "angular_damping": 1.2,
+      "slip_base": 0.02,
+      "slip_turn_gain": 0.04,
+      "motor_deadzone_vx": 0.04,
+      "motor_deadzone_omega": 0.1,
+      "contact": {
+        "mu_static": 0.8,
+        "mu_dynamic": 0.65,
+        "restitution": 0.04,
+        "softness": 0.002
+      }
+    },
+    "visual": {
+      "renderer": {
+        "mode": "pbr",
+        "tone_mapping": "aces",
+        "exposure": 1.05,
+        "shadows": true,
+        "ssao": true
+      },
+      "materials": {
+        "chassis": {
+          "base_color": "#8BAAC9",
+          "metalness": 0.35,
+          "roughness": 0.38,
+          "emissive": "#000000"
+        },
+        "joint": {
+          "base_color": "#3E5F85",
+          "metalness": 0.45,
+          "roughness": 0.32
+        },
+        "rubber": {
+          "base_color": "#151B24",
+          "metalness": 0.06,
+          "roughness": 0.9
+        }
+      },
+      "lights": [
+        {"type": "hemisphere", "intensity": 0.62, "sky_color": "#C8DDFF", "ground_color": "#0A1220"},
+        {"type": "directional", "intensity": 1.25, "color": "#FFFFFF", "position": [8.0, 12.0, 6.0]},
+        {"type": "point", "intensity": 0.4, "color": "#7CC7FF", "position": [2.0, 3.0, 8.5]}
+      ],
+      "camera": {
+        "mode": "follow_orbit",
+        "fov_deg": 45.0,
+        "distance": 8.7,
+        "pitch": 0.55,
+        "yaw": 0.65,
+        "smoothing": 0.09
+      }
+    },
+    "kinematics": {
+      "base_type": "floating",
+      "links": [
+        {"name": "base_link", "mass": 18.0, "inertia": [0.56, 0.51, 0.33]},
+        {"name": "torso_link", "mass": 12.0, "inertia": [0.21, 0.2, 0.17]},
+        {"name": "head_link", "mass": 3.6, "inertia": [0.03, 0.03, 0.02]}
+      ],
+      "joints": [
+        {"name": "left_hip_yaw", "type": "revolute", "limits": [-0.9, 0.9], "damping": 0.12},
+        {"name": "left_hip_pitch", "type": "revolute", "limits": [-1.2, 1.2], "damping": 0.14},
+        {"name": "left_knee", "type": "revolute", "limits": [-0.1, 2.2], "damping": 0.16},
+        {"name": "right_hip_yaw", "type": "revolute", "limits": [-0.9, 0.9], "damping": 0.12},
+        {"name": "right_hip_pitch", "type": "revolute", "limits": [-1.2, 1.2], "damping": 0.14},
+        {"name": "right_knee", "type": "revolute", "limits": [-0.1, 2.2], "damping": 0.16}
+      ]
+    },
+    "collision": {
+      "primitives": [
+        {"link": "base_link", "type": "box", "size": [0.42, 0.34, 0.16]},
+        {"link": "torso_link", "type": "capsule", "radius": 0.12, "length": 0.42}
+      ]
+    },
+    "sensors": [
+      {"name": "imu_main", "type": "imu", "rate_hz": 200, "noise_std": {"gyro": 0.002, "accel": 0.03}},
+      {"name": "lidar_front", "type": "lidar", "rate_hz": 20, "rays": 90, "max_range": 6.0},
+      {"name": "camera_head", "type": "camera_rgbd", "rate_hz": 30, "resolution": [640, 480], "fov_deg": 78}
+    ],
+    "controllers": {
+      "low_level": {
+        "mode": "torque_pd",
+        "kp": 60.0,
+        "kd": 2.2,
+        "torque_limit": 120.0
+      },
+      "high_level": {
+        "mode": "velocity_nav",
+        "max_linear": 0.45,
+        "max_angular": 1.6
+      }
+    },
+    "policy": {
+      "type": "waypoints",
+      "waypoints": [[1.5, 1.5], [2.8, 2.2], [4.0, 3.6], [5.5, 5.0], [7.0, 6.8], [8.2, 8.2], [6.4, 7.8], [4.1, 6.2], [2.2, 4.2], [1.5, 1.5]]
+    },
+    "assets": {
+      "usd_reference": "assets/usd/humanoid_x1.usd",
+      "urdf_reference": "assets/urdf/humanoid_x1.urdf",
+      "mesh_overrides": [
+        {"link": "base_link", "visual_mesh": "assets/meshes/base_link.glb"},
+        {"link": "head_link", "visual_mesh": "assets/meshes/head_link.glb"}
+      ]
+    }
+  }
+}
