@@ -7,8 +7,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     :root { --bg: #020812; --panel-bg: #0a0f18; --panel-border: #1a2332; --fg: #e5e7eb; }
-    .light-mode { --bg: #f0f4f8; --panel-bg: #ffffff; --panel-border: #d1d5db; --fg: #1e293b; }
-    body { background: var(--bg); color: var(--fg); font-family: Inter, system-ui, -apple-system, sans-serif; }
+    .light-mode { --bg: #f0f4f8; --panel-bg: #ffffff; --panel-border: #d1d5db; --fg: #1e293b; color: var(--fg); background: var(--bg); }
+    body { background: var(--bg); color: var(--fg); font-family: Inter, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
     .panel { background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 10px; }
     /* ── Light mode element overrides ───────────────────────────── */
     .light-mode .bg-slate-800 { background-color: #e2e8f0 !important; }
@@ -29,7 +29,7 @@
     .light-mode .bg-cyan-800 { background-color: #0e7490 !important; }
     .light-mode .hover\:bg-cyan-700:hover { background-color: #0891b2 !important; }
     .light-mode .bg-cyan-900 { background-color: #cffafe !important; }
-    .light-mode .text-cyan-100 { color: #0e7490 !important; }
+    .light-mode .text-cyan-100 { color: #ffffff !important; }
     .light-mode .bg-red-900 { background-color: #fca5a5 !important; }
     .light-mode .hover\:bg-red-800:hover { background-color: #f87171 !important; }
     .light-mode [class~="bg-[#0d1117]"] { background-color: #f8fafc !important; }
@@ -1028,6 +1028,7 @@
             <button className="text-xs px-2 py-1 bg-slate-800 rounded" onClick={() => setShowEvents((v) => !v)}>Events</button>
             <button className="text-xs px-2 py-1 bg-slate-800 rounded" onClick={() => setShowPalette(true)}>Cmd</button>
             <button className="text-xs px-2 py-1 bg-slate-800 rounded" onClick={() => setLightMode((v) => !v)}>{lightMode ? "🌙 Dark" : "☀ Light"}</button>
+            <a href="/dashboard" className="text-xs px-2 py-1 bg-cyan-800 hover:bg-cyan-700 rounded text-cyan-100 no-underline" style={{textDecoration:'none'}}>📊 Dashboard →</a>
           </header>
 
           <div className="flex-1 min-h-0 px-3 pb-3 flex gap-3">

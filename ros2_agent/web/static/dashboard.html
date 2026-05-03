@@ -21,7 +21,8 @@ body.light {
   --text:#1e293b;--dim:#64748b;--dim2:#94a3b8;
 }
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
-  font-family:'JetBrains Mono','Fira Code','Consolas',monospace;font-size:11px;line-height:1.4}
+  font-family:'JetBrains Mono','Fira Code','Consolas',monospace;font-size:11px;line-height:1.4;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 #app{display:grid;height:100vh;
@@ -86,6 +87,33 @@ canvas{display:block}
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* ── Drive controls ───────────────────────────────────── */
+.drive-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin:4px auto 0;width:155px;flex-shrink:0}
+.drive-btn{background:#060f1e;border:1px solid var(--border2);padding:5px 2px;border-radius:4px;
+  cursor:pointer;font-family:inherit;font-size:9px;font-weight:700;color:var(--cyan);
+  letter-spacing:.03em;transition:background .1s;text-align:center;user-select:none;line-height:1.2}
+.drive-btn:hover,.drive-btn:active{background:rgba(34,211,238,.15)}
+.drive-btn.stop{color:var(--red);border-color:var(--red)}
+.drive-btn.patrol{color:var(--orange);border-color:var(--orange)}
+/* ── Event log panel ──────────────────────────────────── */
+#event-panel{position:fixed;top:49px;right:0;bottom:100px;width:272px;
+  background:var(--panel);border-left:1px solid var(--border2);border-bottom:1px solid var(--border2);
+  overflow:hidden;padding:8px;z-index:100;transform:translateX(100%);transition:transform .2s ease;
+  display:flex;flex-direction:column}
+#event-panel.open{transform:translateX(0)}
+.ev-item{padding:3px 0;border-bottom:1px solid var(--border);font-size:9px}
+.ev-ts{color:var(--dim2);margin-right:4px}
+/* ── Toast alerts ─────────────────────────────────────── */
+#toast-container{position:fixed;bottom:104px;right:8px;z-index:200;display:flex;
+  flex-direction:column-reverse;gap:4px;pointer-events:none}
+.toast{padding:5px 12px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.04em;
+  border:1px solid;opacity:0;transform:translateX(20px);transition:opacity .2s,transform .2s;
+  pointer-events:auto;cursor:pointer}
+.toast.show{opacity:1;transform:translateX(0)}
+.toast.warn{background:#160c02;border-color:var(--orange);color:var(--orange)}
+.toast.err{background:#160202;border-color:var(--red);color:var(--red)}
+.toast.ok{background:#021606;border-color:var(--green);color:var(--green)}
 </style>
 </head>
 <body>
@@ -102,6 +130,8 @@ canvas{display:block}
   <span id="fps-badge">0 Hz</span>
   <span id="bat-hdr" style="font-size:11px;color:var(--green);min-width:70px;text-align:right">🔋 --.--%</span>
   <button id="theme-btn" onclick="toggleTheme()" class="ctrl-btn" style="border-color:var(--dim2);color:var(--dim2);margin-left:4px">☀ Light</button>
+  <button onclick="toggleEvents()" class="ctrl-btn" id="events-btn" style="border-color:var(--yellow);color:var(--yellow);margin-left:4px">📋 Log</button>
+  <a href="/" class="ctrl-btn" style="border-color:var(--cyan);color:var(--cyan);margin-left:4px;text-decoration:none">◀ Agent UI</a>
 </header>
 
 <!-- ═══ PIPELINE COL ══════════════════════════════════════════════════════ -->
@@ -123,6 +153,17 @@ canvas{display:block}
       <button class="ctrl-btn" style="border-color:var(--cyan);color:var(--cyan)" onclick="sendGoal()">SEND GOAL</button>
       <button class="ctrl-btn" style="border-color:var(--orange);color:var(--orange)" onclick="sendTour()">▶ TOUR</button>
       <button class="ctrl-btn" style="border-color:var(--dim);color:var(--dim)" onclick="resetSim()">↺ RESET</button>
+    </div>
+    <div class="drive-grid">
+      <span></span>
+      <button class="drive-btn" onmousedown="beginDrive(0.45,0)" onmouseup="endDrive()" onmouseleave="endDrive()">▲ FWD</button>
+      <span></span>
+      <button class="drive-btn" onmousedown="beginDrive(0,1.4)" onmouseup="endDrive()" onmouseleave="endDrive()">◄ L</button>
+      <button class="drive-btn stop" onclick="endDrive()">■ STOP</button>
+      <button class="drive-btn" onmousedown="beginDrive(0,-1.4)" onmouseup="endDrive()" onmouseleave="endDrive()">R ►</button>
+      <span></span>
+      <button class="drive-btn" onmousedown="beginDrive(-0.45,0)" onmouseup="endDrive()" onmouseleave="endDrive()">▼ REV</button>
+      <span></span>
     </div>
   </div>
 </section>
@@ -169,6 +210,16 @@ canvas{display:block}
 </div>
 
 </div><!-- #app -->
+
+<!-- ═══ EVENT LOG PANEL ══════════════════════════════════════════════════ -->
+<div id="event-panel">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-shrink:0">
+    <span style="color:var(--yellow);font-weight:700;font-size:10px;letter-spacing:.08em">📋 EVENT LOG</span>
+    <button onclick="toggleEvents()" style="background:none;border:none;color:var(--dim2);cursor:pointer;font-size:12px;line-height:1">✕</button>
+  </div>
+  <div id="event-list" style="flex:1;overflow-y:auto"><span style="color:var(--dim2)">Loading…</span></div>
+</div>
+<div id="toast-container"></div>
 
 <script>
 'use strict';
@@ -499,7 +550,9 @@ function drawConn(ctx, scale, c, now) {
 
 let lastPipeTime = 0;
 function renderPipeline(now) {
-  const W = PC.width, H = PC.height;
+  const dpr = PC._dpr || 1;
+  pctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = PC._cssW || PC.width, H = PC._cssH || PC.height;
   const scale = Math.min(W / VW, H / VH);
   const offX = (W - VW*scale) / 2;
   const offY = (H - VH*scale) / 2;
@@ -605,7 +658,9 @@ MC.addEventListener('click', e => {
 });
 
 function renderMap() {
-  const W = MC.width, H = MC.height;
+  const dpr = MC._dpr || 1;
+  mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = MC._cssW || MC.width, H = MC._cssH || MC.height;
   const scale = Math.min(W,H) / MAP_SIZE;
   const ox = (W - MAP_SIZE*scale)/2, oy = (H - MAP_SIZE*scale)/2;
   const w2c = (x,y) => [ox + x*scale, oy + (MAP_SIZE - y)*scale];
@@ -763,7 +818,9 @@ const lctx = LC.getContext('2d');
 let lidarHistory = [];
 
 function renderLidar() {
-  const W = LC.width, H = LC.height;
+  const dpr = LC._dpr || 1;
+  lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = LC._cssW || LC.width, H = LC._cssH || LC.height;
   const cx = W/2, cy = H/2;
   const maxR = d ? 6.0 : 6.0;
   const scale = (Math.min(W,H)/2 - 10) / maxR;
@@ -859,7 +916,9 @@ const CC = document.getElementById('camCanvas');
 const cctx = CC.getContext('2d');
 
 function renderCamera() {
-  const W = CC.width, H = CC.height;
+  const dpr = CC._dpr || 1;
+  cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = CC._cssW || CC.width, H = CC._cssH || CC.height;
   cctx.clearRect(0,0,W,H);
   cctx.fillStyle = lightMode ? '#f0f4f8' : '#04080f';
   cctx.fillRect(0,0,W,H);
@@ -1060,18 +1119,24 @@ function resizeCanvas(canvas) {
 }
 
 function initCanvasSizes() {
+  const dpr = window.devicePixelRatio || 1;
+  function sc(c, cssW, cssH) {
+    cssW = Math.max(10, cssW); cssH = Math.max(10, cssH);
+    c.style.width = cssW + 'px'; c.style.height = cssH + 'px';
+    c.width = Math.round(cssW * dpr); c.height = Math.round(cssH * dpr);
+    c._dpr = dpr; c._cssW = cssW; c._cssH = cssH;
+  }
   [PC, MC].forEach(c => {
-    const rect = c.parentElement.getBoundingClientRect();
-    c.width  = rect.width;
-    c.height = rect.height - (c===MC ? 32 : 0); // leave room for controls
+    const pr = c.parentElement.getBoundingClientRect();
+    const cr = c.getBoundingClientRect();
+    const w = Math.round(pr.width);
+    const h = cr.height > 10 ? Math.round(cr.height) : Math.round(pr.height) - (c===MC ? 76 : 0);
+    sc(c, w, h);
   });
-  // LiDAR: 340×170 already set, but respect actual width
   const lcRect = LC.parentElement.getBoundingClientRect();
-  LC.width  = lcRect.width - 10;
-  LC.height = 160;
+  sc(LC, Math.round(lcRect.width) - 10, 160);
   const ccRect = CC.parentElement.getBoundingClientRect();
-  CC.width  = ccRect.width - 10;
-  CC.height = 56;
+  sc(CC, Math.round(ccRect.width) - 10, 56);
 }
 
 window.addEventListener('resize', initCanvasSizes);
@@ -1088,6 +1153,7 @@ function frame(now) {
     renderCamera();
     renderSLAM();
     renderMetrics();
+    checkAlerts();
   }
   requestAnimationFrame(frame);
 }
@@ -1148,6 +1214,67 @@ function sendTour() {
 
 function resetSim() {
   fetch('/sim/reset', {method:'POST'}).catch(()=>{});
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EVENT LOG
+═══════════════════════════════════════════════════════════════════════════ */
+let eventsOpen = false, eventsTimer = null;
+
+function toggleEvents() {
+  eventsOpen = !eventsOpen;
+  document.getElementById('event-panel').classList.toggle('open', eventsOpen);
+  const btn = document.getElementById('events-btn');
+  btn.style.borderColor = eventsOpen ? 'var(--cyan)' : 'var(--yellow)';
+  btn.style.color = eventsOpen ? 'var(--cyan)' : 'var(--yellow)';
+  if (eventsOpen) { loadEvents(); eventsTimer = setInterval(loadEvents, 2500); }
+  else { clearInterval(eventsTimer); eventsTimer = null; }
+}
+
+async function loadEvents() {
+  try {
+    const data = await fetch('/sim/events?limit=60').then(r => r.json());
+    const evs = (data.events || []).slice().reverse();
+    const el = document.getElementById('event-list');
+    if (!evs.length) { el.innerHTML = '<span style="color:var(--dim2)">No events yet.</span>'; return; }
+    el.innerHTML = evs.map(ev => {
+      const t = new Date((ev.ts||0)*1000).toLocaleTimeString();
+      return `<div class="ev-item"><span class="ev-ts">${t}</span>${ev.msg||''}</div>`;
+    }).join('');
+  } catch {}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOAST ALERTS
+═══════════════════════════════════════════════════════════════════════════ */
+const toastCont = document.getElementById('toast-container');
+let lastBatAlert = 0, lastStuckAlert = 0, lastArriveAlert = 0;
+
+function showToast(msg, type, dur) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  t.onclick = () => t.remove();
+  toastCont.appendChild(t);
+  requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('show')));
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 250); }, dur || 3500);
+}
+
+function checkAlerts() {
+  if (!d) return;
+  const now = Date.now();
+  if ((d.battery||100) < 20 && now - lastBatAlert > 30000) {
+    showToast('⚡ Battery low: ' + fmtN(d.battery,1) + '%', 'err');
+    lastBatAlert = now;
+  }
+  if ((d.no_move_ticks||0) > 40 && d.nav_active && now - lastStuckAlert > 15000) {
+    showToast('⚠ Robot may be stuck', 'warn');
+    lastStuckAlert = now;
+  }
+  if (d.nav_succeeded && now - lastArriveAlert > 3000) {
+    showToast('\u2713 Navigation complete', 'ok', 2500);
+    lastArriveAlert = now;
+  }
 }
 </script>
 </body>
