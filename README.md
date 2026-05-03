@@ -134,6 +134,14 @@ A full physics simulator streams to your browser in real time.
 90-ray LiDAR, differential-drive dynamics, acceleration limits, Gaussian sensor noise —
 no Gazebo, no ROS 2 install needed.
 
+### Dashboard Pro Features
+
+- Timeline recorder with replay scrubber: capture live telemetry, scrub frame-by-frame, and play mission replays in-place.
+- Session export/import: save full telemetry sessions as JSON and share reproducible mission traces.
+- Health insights panel: real-time health score, trend sparkline, and anomaly badges (battery, slip, latency, SLAM drift, stuck risk).
+- Mission analytics bar: live mission mode, elapsed time, traversed path distance, completed goals, and waypoint progress.
+- Event intelligence: category-aware event feed with filters for navigation lifecycle events.
+
 <!-- Web UI screenshot or video — replace src with your GitHub-uploaded asset -->
 <!--
 <video src="https://github.com/user-attachments/assets/REPLACE_WITH_WEBUI_UPLOAD.mp4"

@@ -62,8 +62,16 @@ canvas{display:block}
 .ctrl-btn{background:#0a1828;border:1px solid;padding:2px 9px;border-radius:4px;cursor:pointer;
   font-family:inherit;font-size:10px;font-weight:700;letter-spacing:.05em;transition:opacity .15s}
 .ctrl-btn:hover{opacity:.8}
+.ctrl-btn.active{box-shadow:0 0 0 1px currentColor inset,0 0 10px rgba(45,212,191,.28)}
 .num-inp{width:46px;background:#07111e;border:1px solid var(--border2);color:var(--text);
   padding:2px 4px;border-radius:4px;font-family:inherit;font-size:10px}
+.timeline-row{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.range-inp{flex:1;min-width:150px;height:18px;accent-color:var(--cyan)}
+.stat-pill{font-size:9px;color:var(--dim2);border:1px solid var(--border2);padding:1px 6px;border-radius:4px}
+.ctrl-btn.rec{border-color:var(--red);color:var(--red)}
+.ctrl-btn.rec.live{background:rgba(248,113,113,.12);box-shadow:0 0 10px rgba(248,113,113,.22)}
+.ctrl-btn.replay{border-color:var(--teal);color:var(--teal)}
+.ctrl-btn.play{border-color:var(--green);color:var(--green)}
 
 /* ── Metrics bar cells ───────────────────────────────────────────────────── */
 .mg{flex:1;display:flex;flex-direction:column;gap:2px;padding:5px 8px;border-right:1px solid var(--border)}
@@ -82,6 +90,13 @@ canvas{display:block}
 .sm-v{font-size:10px;font-weight:700}
 .det-item{display:flex;gap:6px;padding:2px 4px;background:#040c16;border-radius:3px;
   border-left:3px solid var(--orange);margin-bottom:2px}
+.health-wrap{margin-top:4px;border-top:1px solid var(--border);padding-top:4px}
+.health-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
+.health-score{font-size:11px;font-weight:700}
+.health-bar{height:6px;border-radius:4px;background:var(--border);overflow:hidden}
+.health-bar-fill{height:100%;border-radius:4px;transition:width .2s}
+.health-signals{margin-top:3px;display:flex;gap:4px;flex-wrap:wrap}
+.health-sig{font-size:8px;padding:1px 5px;border-radius:999px;border:1px solid}
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar{width:4px;height:4px}
@@ -104,6 +119,10 @@ canvas{display:block}
 #event-panel.open{transform:translateX(0)}
 .ev-item{padding:3px 0;border-bottom:1px solid var(--border);font-size:9px}
 .ev-ts{color:var(--dim2);margin-right:4px}
+.ev-cat{display:inline-block;font-size:8px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--dim2);border:1px solid var(--border2);padding:1px 4px;border-radius:3px;margin-right:4px}
+.ev-filter{background:#07111e;border:1px solid var(--border2);color:var(--text);
+  font-family:inherit;font-size:9px;border-radius:4px;padding:2px 4px}
 /* ── Toast alerts ─────────────────────────────────────── */
 #toast-container{position:fixed;bottom:104px;right:8px;z-index:200;display:flex;
   flex-direction:column-reverse;gap:4px;pointer-events:none}
@@ -165,6 +184,16 @@ canvas{display:block}
       <button class="drive-btn" onmousedown="beginDrive(-0.45,0)" onmouseup="endDrive()" onmouseleave="endDrive()">▼ REV</button>
       <span></span>
     </div>
+    <div class="timeline-row">
+      <button class="ctrl-btn rec" id="record-btn" onclick="toggleRecord()">● REC</button>
+      <button class="ctrl-btn replay" id="replay-btn" onclick="toggleReplay()">◷ REPLAY</button>
+      <button class="ctrl-btn play" id="play-btn" onclick="toggleReplayPlay()">⏵</button>
+      <input id="timeline" class="range-inp" type="range" min="0" max="0" value="0" oninput="scrubReplay(this.value)">
+      <span id="timeline-label" class="stat-pill">LIVE</span>
+      <button class="ctrl-btn" style="border-color:var(--blue);color:var(--blue)" onclick="exportSession()">⬇ EXPORT</button>
+      <button class="ctrl-btn" style="border-color:var(--purple);color:var(--purple)" onclick="openImportSession()">⬆ IMPORT</button>
+      <input id="session-file" type="file" accept="application/json,.json" style="display:none" onchange="importSession(event)">
+    </div>
   </div>
 </section>
 
@@ -182,6 +211,15 @@ canvas{display:block}
   <div class="sub-panel" style="flex:1;overflow-y:auto">
     <div class="sub-title">🧭 SLAM + NAV STATE</div>
     <div id="slam-grid" class="sm-row"></div>
+    <div class="health-wrap">
+      <div class="health-head">
+        <span class="sub-title" style="margin:0">❤️ HEALTH SCORE</span>
+        <span id="health-score" class="health-score">-- / 100</span>
+      </div>
+      <div class="health-bar"><div id="health-fill" class="health-bar-fill" style="width:0%"></div></div>
+      <canvas id="healthCanvas" style="width:100%;height:56px;border-radius:4px;margin-top:4px"></canvas>
+      <div id="health-signals" class="health-signals"></div>
+    </div>
   </div>
 </section>
 
@@ -207,6 +245,10 @@ canvas{display:block}
     <div class="mg-title">⏱ TIMING</div>
     <div id="mg-timing-body"></div>
   </div>
+  <div class="mg" id="mg-mission">
+    <div class="mg-title">🛰 MISSION</div>
+    <div id="mg-mission-body"></div>
+  </div>
 </div>
 
 </div><!-- #app -->
@@ -215,7 +257,17 @@ canvas{display:block}
 <div id="event-panel">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-shrink:0">
     <span style="color:var(--yellow);font-weight:700;font-size:10px;letter-spacing:.08em">📋 EVENT LOG</span>
-    <button onclick="toggleEvents()" style="background:none;border:none;color:var(--dim2);cursor:pointer;font-size:12px;line-height:1">✕</button>
+    <div style="display:flex;align-items:center;gap:6px">
+      <select id="event-filter" class="ev-filter" onchange="setEventFilter(this.value)">
+        <option value="all">all</option>
+        <option value="system">system</option>
+        <option value="nav_goal">nav_goal</option>
+        <option value="waypoints">waypoints</option>
+        <option value="waypoint_next">waypoint_next</option>
+        <option value="nav_complete">nav_complete</option>
+      </select>
+      <button onclick="toggleEvents()" style="background:none;border:none;color:var(--dim2);cursor:pointer;font-size:12px;line-height:1">✕</button>
+    </div>
   </div>
   <div id="event-list" style="flex:1;overflow-y:auto"><span style="color:var(--dim2)">Loading…</span></div>
 </div>
@@ -235,7 +287,21 @@ const OBSTACLES = [[2.0,1.5,1.2,0.4],[5.5,1.0,0.4,2.0],[1.5,4.5,2.0,0.4],
 
 let lightMode = localStorage.getItem('ros2-theme') === 'light';
 if (lightMode) { document.body.classList.add('light'); const _tb = document.getElementById('theme-btn'); if (_tb) _tb.textContent = '\ud83c\udf19 Dark'; }
-let d = null;          // latest telemetry snapshot
+let d = null;          // active snapshot used by renderers (live or replay)
+let liveD = null;      // latest live telemetry snapshot
+const timelineFrames = [];
+const MAX_RECORD_FRAMES = 8000;
+let recordEnabled = true;
+let replayMode = false;
+let replayPlaying = false;
+let replayIndex = 0;
+let replayLastTickMs = 0;
+let lastTimelineUIUpdateMs = 0;
+let healthHistory = [];
+const MAX_HEALTH_POINTS = 160;
+let eventCache = [];
+let eventFilter = 'all';
+let importedSession = false;
 let fpsCount = 0;
 let lastFpsTs = performance.now();
 
@@ -255,7 +321,9 @@ function connectWS() {
     setTimeout(connectWS, 1500);
   };
   ws.onmessage = e => {
-    try { d = JSON.parse(e.data); } catch { return; }
+    let next;
+    try { next = JSON.parse(e.data); } catch { return; }
+    ingestTelemetry(next);
     fpsCount++;
   };
 }
@@ -284,6 +352,29 @@ const lerp  = (a, b, t) => a + (b - a) * t;
 const fmtN  = (v, d) => (v == null ? '--' : Number(v).toFixed(d));
 const col   = (css) => css; // pass-through, used for readability
 
+function cloneData(v) {
+  if (typeof structuredClone === 'function') return structuredClone(v);
+  return JSON.parse(JSON.stringify(v));
+}
+
+function frameTs(frame) {
+  if (!frame) return 0;
+  const ts = Number(frame.ts ?? frame.__recorded_ts ?? 0);
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function fmtDur(totalSec) {
+  const s = Math.max(0, Math.floor(totalSec || 0));
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
+  return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
+function timelineDurationSec() {
+  if (timelineFrames.length < 2) return 0;
+  return Math.max(0, frameTs(timelineFrames[timelineFrames.length - 1]) - frameTs(timelineFrames[0]));
+}
+
 function hsvToRgb(h, s, v) {
   const i = Math.floor(h * 6), f = h * 6 - i;
   const p = v*(1-s), q = v*(1-f*s), t2 = v*(1-(1-f)*s);
@@ -294,6 +385,245 @@ function hsvToRgb(h, s, v) {
 function barFill(el, frac, color) {
   el.style.width = clamp(frac*100, 0, 100) + '%';
   el.style.background = color;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TIMELINE RECORDING / REPLAY / SESSION I-O
+═══════════════════════════════════════════════════════════════════════════ */
+function ingestTelemetry(next) {
+  liveD = next;
+  if (recordEnabled) recordFrame(next);
+  if (!replayMode) {
+    importedSession = false;
+    d = next;
+    replayIndex = Math.max(0, timelineFrames.length - 1);
+  }
+}
+
+function recordFrame(next) {
+  const frame = cloneData(next);
+  if (frame.ts == null) frame.__recorded_ts = Date.now() / 1000;
+  timelineFrames.push(frame);
+
+  if (timelineFrames.length > MAX_RECORD_FRAMES) {
+    timelineFrames.shift();
+    if (replayMode) replayIndex = Math.max(0, replayIndex - 1);
+  }
+
+  const now = performance.now();
+  if (now - lastTimelineUIUpdateMs > 150) {
+    updateTimelineUI();
+    lastTimelineUIUpdateMs = now;
+  }
+}
+
+function updateRecordButton() {
+  const btn = document.getElementById('record-btn');
+  if (!btn) return;
+  btn.classList.toggle('live', recordEnabled);
+  btn.classList.toggle('active', recordEnabled);
+  btn.textContent = recordEnabled ? '● REC' : '○ REC';
+}
+
+function updateReplayButtons() {
+  const replayBtn = document.getElementById('replay-btn');
+  const playBtn = document.getElementById('play-btn');
+  if (replayBtn) {
+    replayBtn.classList.toggle('active', replayMode);
+    replayBtn.textContent = replayMode ? '◷ LIVE' : '◷ REPLAY';
+  }
+  if (playBtn) {
+    playBtn.classList.toggle('active', replayPlaying);
+    playBtn.textContent = replayPlaying ? '⏸' : '⏵';
+    playBtn.disabled = !replayMode || timelineFrames.length < 2;
+    playBtn.style.opacity = playBtn.disabled ? '0.45' : '1';
+  }
+  mapClickGoal = !replayMode;
+}
+
+function updateTimelineUI(force = false) {
+  const slider = document.getElementById('timeline');
+  const label = document.getElementById('timeline-label');
+  if (!slider || !label) return;
+
+  const hasFrames = timelineFrames.length > 0;
+  slider.max = String(Math.max(0, timelineFrames.length - 1));
+  slider.disabled = !hasFrames;
+
+  if (replayMode && hasFrames) {
+    replayIndex = clamp(replayIndex, 0, timelineFrames.length - 1);
+    slider.value = String(replayIndex);
+    const startTs = frameTs(timelineFrames[0]);
+    const curTs = frameTs(timelineFrames[replayIndex]);
+    label.textContent = `REPLAY ${fmtDur(curTs - startTs)} / ${fmtDur(timelineDurationSec())}`;
+  } else if (hasFrames) {
+    slider.value = String(timelineFrames.length - 1);
+    label.textContent = `LIVE ${fmtDur(timelineDurationSec())} · ${timelineFrames.length}f`;
+  } else {
+    slider.value = '0';
+    label.textContent = 'LIVE';
+  }
+}
+
+function applyReplayFrame(idx) {
+  if (!timelineFrames.length) return;
+  replayIndex = clamp(idx, 0, timelineFrames.length - 1);
+  d = timelineFrames[replayIndex];
+  updateTimelineUI(true);
+}
+
+function toggleRecord() {
+  recordEnabled = !recordEnabled;
+  updateRecordButton();
+  showToast(recordEnabled ? 'Recording enabled' : 'Recording paused', recordEnabled ? 'ok' : 'warn', 1600);
+}
+
+function toggleReplay() {
+  if (replayMode) {
+    replayMode = false;
+    replayPlaying = false;
+    importedSession = false;
+    d = liveD || timelineFrames[timelineFrames.length - 1] || d;
+    updateReplayButtons();
+    updateTimelineUI(true);
+    showToast('Returned to live stream', 'ok', 1600);
+    return;
+  }
+
+  if (timelineFrames.length < 2) {
+    showToast('Record more telemetry before replaying', 'warn', 2000);
+    return;
+  }
+
+  replayMode = true;
+  replayPlaying = false;
+  applyReplayFrame(timelineFrames.length - 1);
+  updateReplayButtons();
+  showToast('Replay mode enabled', 'ok', 1600);
+}
+
+function toggleReplayPlay() {
+  if (!replayMode) {
+    toggleReplay();
+    if (!replayMode) return;
+  }
+  if (timelineFrames.length < 2) return;
+
+  if (!replayPlaying && replayIndex >= timelineFrames.length - 1) {
+    applyReplayFrame(0);
+  }
+
+  replayPlaying = !replayPlaying;
+  replayLastTickMs = performance.now();
+  updateReplayButtons();
+}
+
+function scrubReplay(value) {
+  if (!timelineFrames.length) return;
+  const idx = clamp(parseInt(value, 10) || 0, 0, timelineFrames.length - 1);
+  if (!replayMode) {
+    replayMode = true;
+    replayPlaying = false;
+    updateReplayButtons();
+  }
+  applyReplayFrame(idx);
+}
+
+function advanceReplay(now) {
+  if (!replayMode || !replayPlaying || timelineFrames.length < 2) return;
+  const elapsed = now - replayLastTickMs;
+  if (elapsed < 50) return;
+
+  const steps = Math.max(1, Math.floor(elapsed / 50));
+  replayLastTickMs = now;
+  const nextIdx = replayIndex + steps;
+  if (nextIdx >= timelineFrames.length - 1) {
+    applyReplayFrame(timelineFrames.length - 1);
+    replayPlaying = false;
+    updateReplayButtons();
+    showToast('Replay reached end', 'ok', 1400);
+    return;
+  }
+  applyReplayFrame(nextIdx);
+}
+
+function exportSession() {
+  if (!timelineFrames.length) {
+    showToast('No session frames to export', 'warn', 2000);
+    return;
+  }
+
+  const payload = {
+    schema: 'ros2-agent-dashboard-session/v1',
+    exported_at: new Date().toISOString(),
+    frame_count: timelineFrames.length,
+    duration_s: timelineDurationSec(),
+    frames: timelineFrames,
+    events: eventCache,
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const stamp = new Date().toISOString().replace(/[.:]/g, '-');
+  const fileName = `ros2-session-${stamp}.json`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  showToast(`Session exported (${timelineFrames.length} frames)`, 'ok', 2200);
+}
+
+function openImportSession() {
+  const input = document.getElementById('session-file');
+  if (!input) return;
+  input.value = '';
+  input.click();
+}
+
+async function importSession(event) {
+  const file = event.target?.files?.[0];
+  if (!file) return;
+
+  try {
+    const txt = await file.text();
+    const payload = JSON.parse(txt);
+    const frames = Array.isArray(payload) ? payload : payload.frames;
+
+    if (!Array.isArray(frames) || !frames.length) {
+      throw new Error('missing frame list');
+    }
+
+    timelineFrames.length = 0;
+    frames.forEach(frame => {
+      if (frame && typeof frame === 'object') timelineFrames.push(frame);
+    });
+    if (!timelineFrames.length) throw new Error('no valid frames');
+
+    const importedEvents = Array.isArray(payload?.events) ? payload.events : [];
+    eventCache = importedEvents
+      .filter(ev => ev && typeof ev === 'object')
+      .map(ev => ({ ts: Number(ev.ts || 0), cat: String(ev.cat || 'system'), msg: String(ev.msg || '') }));
+
+    importedSession = true;
+    replayMode = true;
+    replayPlaying = false;
+    replayIndex = 0;
+    d = timelineFrames[0];
+    healthHistory = [];
+    setEventFilter(eventFilter);
+    updateReplayButtons();
+    updateTimelineUI(true);
+    renderEventList();
+    showToast(`Imported session with ${timelineFrames.length} frames`, 'ok', 2500);
+  } catch (err) {
+    const msg = err && err.message ? err.message : 'invalid JSON session file';
+    showToast(`Import failed: ${msg}`, 'err', 3200);
+  } finally {
+    if (event.target) event.target.value = '';
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -914,6 +1244,8 @@ function renderLidar() {
 ═══════════════════════════════════════════════════════════════════════════ */
 const CC = document.getElementById('camCanvas');
 const cctx = CC.getContext('2d');
+const HC = document.getElementById('healthCanvas');
+const hctx = HC.getContext('2d');
 
 function renderCamera() {
   const dpr = CC._dpr || 1;
@@ -1001,6 +1333,127 @@ function renderCamera() {
   }
 }
 
+function healthColor(score) {
+  if (score >= 80) return '#4ade80';
+  if (score >= 60) return '#fbbf24';
+  return '#f87171';
+}
+
+function computeHealth(frame) {
+  let score = 100;
+  const signals = [];
+
+  const addSignal = (label, severity, penalty) => {
+    signals.push({ label, severity });
+    score -= penalty;
+  };
+
+  const battery = Number(frame.battery ?? 100);
+  if (battery < 20) addSignal(`battery critical ${fmtN(battery, 1)}%`, 'err', 24);
+  else if (battery < 40) addSignal(`battery low ${fmtN(battery, 1)}%`, 'warn', 10);
+
+  const slip = Number(frame.slip ?? 0);
+  if (slip > 0.16) addSignal(`traction loss ${fmtN(slip, 3)}`, 'err', 18);
+  else if (slip > 0.09) addSignal(`slip rising ${fmtN(slip, 3)}`, 'warn', 8);
+
+  if (frame.escaping) addSignal('escape behavior active', 'warn', 10);
+
+  const noMove = Number(frame.no_move_ticks ?? 0);
+  if (frame.nav_active && noMove > 35) addSignal(`stuck risk ${noMove} ticks`, 'err', 15);
+
+  const slamUnc = Number(frame.slam?.position_uncertainty_cm ?? 0);
+  if (slamUnc > 35) addSignal(`slam drift ${fmtN(slamUnc, 1)} cm`, 'err', 16);
+  else if (slamUnc > 22) addSignal(`slam variance ${fmtN(slamUnc, 1)} cm`, 'warn', 8);
+
+  const t = frame.timing || {};
+  const maxMs = Math.max(Number(t.lidar_ms || 0), Number(t.camera_ms || 0), Number(t.slam_ms || 0));
+  if (maxMs > 14) addSignal(`latency spike ${fmtN(maxMs, 1)} ms`, 'err', 13);
+  else if (maxMs > 9) addSignal(`latency warning ${fmtN(maxMs, 1)} ms`, 'warn', 6);
+
+  if (!signals.length) signals.push({ label: 'nominal', severity: 'ok' });
+  score = clamp(Math.round(score), 0, 100);
+  return { score, signals };
+}
+
+function drawHealthSparkline() {
+  const dpr = HC._dpr || 1;
+  hctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = HC._cssW || HC.width;
+  const H = HC._cssH || HC.height;
+
+  hctx.clearRect(0, 0, W, H);
+  hctx.fillStyle = lightMode ? '#e2e8f0' : '#07111e';
+  hctx.fillRect(0, 0, W, H);
+
+  hctx.strokeStyle = lightMode ? 'rgba(30,41,59,0.12)' : 'rgba(45,212,191,0.12)';
+  hctx.lineWidth = 1;
+  [25, 50, 75].forEach(level => {
+    const y = H - (level / 100) * H;
+    hctx.beginPath();
+    hctx.moveTo(0, y);
+    hctx.lineTo(W, y);
+    hctx.stroke();
+  });
+
+  if (healthHistory.length < 2) {
+    hctx.fillStyle = lightMode ? '#64748b' : '#5a7090';
+    hctx.font = '9px monospace';
+    hctx.fillText('waiting for health samples...', 8, H / 2 + 4);
+    return;
+  }
+
+  const step = W / Math.max(1, healthHistory.length - 1);
+  hctx.beginPath();
+  healthHistory.forEach((v, i) => {
+    const x = i * step;
+    const y = H - clamp(v, 0, 100) / 100 * H;
+    if (i === 0) hctx.moveTo(x, y);
+    else hctx.lineTo(x, y);
+  });
+
+  const latest = healthHistory[healthHistory.length - 1];
+  const c = healthColor(latest);
+  hctx.strokeStyle = c;
+  hctx.lineWidth = 2;
+  hctx.stroke();
+
+  const lx = (healthHistory.length - 1) * step;
+  const ly = H - clamp(latest, 0, 100) / 100 * H;
+  hctx.fillStyle = c;
+  hctx.beginPath();
+  hctx.arc(lx, ly, 3, 0, Math.PI * 2);
+  hctx.fill();
+}
+
+function renderHealth() {
+  if (!d) return;
+  const health = computeHealth(d);
+  healthHistory.push(health.score);
+  if (healthHistory.length > MAX_HEALTH_POINTS) healthHistory.shift();
+
+  const scoreEl = document.getElementById('health-score');
+  const fillEl = document.getElementById('health-fill');
+  const sigEl = document.getElementById('health-signals');
+  const scoreColor = healthColor(health.score);
+
+  if (scoreEl) {
+    scoreEl.textContent = `${health.score} / 100`;
+    scoreEl.style.color = scoreColor;
+  }
+  if (fillEl) {
+    fillEl.style.width = `${health.score}%`;
+    fillEl.style.background = scoreColor;
+  }
+  if (sigEl) {
+    sigEl.innerHTML = health.signals.map(sig => {
+      const color = sig.severity === 'err' ? '#f87171' : sig.severity === 'warn' ? '#fbbf24' : '#4ade80';
+      return `<span class="health-sig" style="color:${color};border-color:${color};background:${color}22">${sig.label}</span>`;
+    }).join('');
+  }
+
+  drawHealthSparkline();
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    SLAM & NAV METRICS
 ═══════════════════════════════════════════════════════════════════════════ */
@@ -1042,6 +1495,17 @@ function mkMgRow(label, val, frac, color) {
     <span class="mg-val" style="color:${color}">${val}</span>
     <div class="mg-bar"><div class="mg-bar-fill" style="${fillStyle}"></div></div>
   </div>`;
+}
+
+function pathDistance(path) {
+  if (!Array.isArray(path) || path.length < 2) return 0;
+  let dist = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1];
+    const b = path[i];
+    dist += Math.hypot((b[0] || 0) - (a[0] || 0), (b[1] || 0) - (a[1] || 0));
+  }
+  return dist;
 }
 
 function renderMetrics() {
@@ -1094,10 +1558,23 @@ function renderMetrics() {
     mkMgRow('camera', fmtN(cms,2)+' ms', cms/12, tCol(cms)) +
     mkMgRow('slam', fmtN(sms,2)+' ms', sms/12, tCol(sms));
 
+  // MISSION
+  const missionTime = timelineDurationSec();
+  const missionPath = pathDistance(d.path || []);
+  const goalsDone = eventCache.filter(ev => ev.cat === 'nav_complete').length;
+  const goalsSet = eventCache.filter(ev => ev.cat === 'nav_goal').length;
+  const wpTotal = (d.waypoints || []).length;
+  const wpIdx = wpTotal ? Math.min(wpTotal, (d.waypoint_index || 0) + (d.nav_succeeded ? 1 : 0)) : 0;
+  const modeColor = replayMode ? 'var(--purple)' : 'var(--teal)';
+  document.getElementById('mg-mission-body').innerHTML =
+    mkMgRow('mode', replayMode ? 'REPLAY' : 'LIVE', replayMode ? 1 : 0.5, modeColor) +
+    mkMgRow('time', fmtDur(missionTime), missionTime / 900, 'var(--cyan)') +
+    mkMgRow('path', fmtN(missionPath,2)+' m', missionPath / 40, 'var(--orange)') +
+    mkMgRow('goals', `${goalsDone}/${Math.max(goalsSet, goalsDone || 1)}`, goalsSet ? goalsDone / goalsSet : (goalsDone ? 1 : 0), 'var(--green)') +
+    mkMgRow('waypt', wpTotal ? `${wpIdx}/${wpTotal}` : '--', wpTotal ? wpIdx / wpTotal : 0, 'var(--blue)');
+
   // Battery header
   const bat = d.battery||0;
-  const batC = bat>50?'var(--green)':bat>20?'var(--yellow)':'var(--red)';
-  document.getElementById('bat-hdr').style.color = batC.replace('var(--','').replace(')','');
   document.getElementById('bat-hdr').innerHTML = `🔋 ${fmtN(bat,2)}%`;
   document.getElementById('bat-hdr').style.color = bat>50?'#4ade80':bat>20?'#fbbf24':'#f87171';
 }
@@ -1137,6 +1614,8 @@ function initCanvasSizes() {
   sc(LC, Math.round(lcRect.width) - 10, 160);
   const ccRect = CC.parentElement.getBoundingClientRect();
   sc(CC, Math.round(ccRect.width) - 10, 56);
+  const hcRect = HC.parentElement.getBoundingClientRect();
+  sc(HC, Math.round(hcRect.width) - 10, 56);
 }
 
 window.addEventListener('resize', initCanvasSizes);
@@ -1146,12 +1625,14 @@ setTimeout(initCanvasSizes, 100);
    MAIN ANIMATION LOOP
 ═══════════════════════════════════════════════════════════════════════════ */
 function frame(now) {
+  advanceReplay(now);
   renderPipeline(now);
   if (d) {
     renderMap();
     renderLidar();
     renderCamera();
     renderSLAM();
+    renderHealth();
     renderMetrics();
     checkAlerts();
   }
@@ -1219,7 +1700,75 @@ function resetSim() {
 /* ═══════════════════════════════════════════════════════════════════════════
    EVENT LOG
 ═══════════════════════════════════════════════════════════════════════════ */
-let eventsOpen = false, eventsTimer = null;
+let eventsOpen = false;
+let eventsTimer = null;
+
+function escHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function eventColor(cat) {
+  switch (cat) {
+    case 'system': return '#60a5fa';
+    case 'nav_goal': return '#22d3ee';
+    case 'waypoints': return '#fbbf24';
+    case 'waypoint_next': return '#fb923c';
+    case 'nav_complete': return '#4ade80';
+    default: return '#a78bfa';
+  }
+}
+
+function normalizeEvent(ev) {
+  return {
+    ts: Number(ev?.ts || 0),
+    cat: String(ev?.cat || 'system'),
+    msg: String(ev?.msg || ''),
+  };
+}
+
+function refreshEventFilterOptions() {
+  const sel = document.getElementById('event-filter');
+  if (!sel) return;
+  const defaults = ['system', 'nav_goal', 'waypoints', 'waypoint_next', 'nav_complete'];
+  const seen = [...new Set(eventCache.map(ev => ev.cat).filter(Boolean))];
+  const extras = seen.filter(cat => !defaults.includes(cat)).sort();
+  const options = ['all', ...defaults, ...extras];
+  sel.innerHTML = options.map(opt => `<option value="${escHtml(opt)}">${escHtml(opt)}</option>`).join('');
+  if (!options.includes(eventFilter)) eventFilter = 'all';
+  sel.value = eventFilter;
+}
+
+function setEventFilter(value) {
+  eventFilter = value || 'all';
+  renderEventList();
+}
+
+function renderEventList() {
+  const el = document.getElementById('event-list');
+  if (!el) return;
+
+  const evs = eventFilter === 'all'
+    ? eventCache
+    : eventCache.filter(ev => ev.cat === eventFilter);
+
+  if (!evs.length) {
+    el.innerHTML = '<span style="color:var(--dim2)">No events match this filter.</span>';
+    return;
+  }
+
+  el.innerHTML = evs.map(ev => {
+    const t = ev.ts ? new Date(ev.ts * 1000).toLocaleTimeString() : '--:--:--';
+    const cat = escHtml(ev.cat);
+    const msg = escHtml(ev.msg);
+    const c = eventColor(ev.cat);
+    return `<div class="ev-item"><span class="ev-ts">${t}</span><span class="ev-cat" style="border-color:${c};color:${c}">${cat}</span>${msg}</div>`;
+  }).join('');
+}
 
 function toggleEvents() {
   eventsOpen = !eventsOpen;
@@ -1227,22 +1776,36 @@ function toggleEvents() {
   const btn = document.getElementById('events-btn');
   btn.style.borderColor = eventsOpen ? 'var(--cyan)' : 'var(--yellow)';
   btn.style.color = eventsOpen ? 'var(--cyan)' : 'var(--yellow)';
-  if (eventsOpen) { loadEvents(); eventsTimer = setInterval(loadEvents, 2500); }
-  else { clearInterval(eventsTimer); eventsTimer = null; }
+  if (eventsOpen) {
+    loadEvents();
+    eventsTimer = setInterval(loadEvents, 2500);
+  } else {
+    clearInterval(eventsTimer);
+    eventsTimer = null;
+  }
 }
 
 async function loadEvents() {
+  if (importedSession && replayMode) {
+    refreshEventFilterOptions();
+    renderEventList();
+    return;
+  }
+
   try {
-    const data = await fetch('/sim/events?limit=60').then(r => r.json());
-    const evs = (data.events || []).slice().reverse();
-    const el = document.getElementById('event-list');
-    if (!evs.length) { el.innerHTML = '<span style="color:var(--dim2)">No events yet.</span>'; return; }
-    el.innerHTML = evs.map(ev => {
-      const t = new Date((ev.ts||0)*1000).toLocaleTimeString();
-      return `<div class="ev-item"><span class="ev-ts">${t}</span>${ev.msg||''}</div>`;
-    }).join('');
-  } catch {}
+    const data = await fetch('/sim/events?limit=120').then(r => r.json());
+    eventCache = (data.events || []).map(normalizeEvent).reverse();
+    refreshEventFilterOptions();
+    renderEventList();
+  } catch {
+    // Keep previous cache when fetch fails.
+  }
 }
+
+setInterval(() => {
+  if (!eventsOpen && !(importedSession && replayMode)) loadEvents();
+}, 7000);
+loadEvents();
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TOAST ALERTS
@@ -1261,7 +1824,7 @@ function showToast(msg, type, dur) {
 }
 
 function checkAlerts() {
-  if (!d) return;
+  if (!d || replayMode) return;
   const now = Date.now();
   if ((d.battery||100) < 20 && now - lastBatAlert > 30000) {
     showToast('⚡ Battery low: ' + fmtN(d.battery,1) + '%', 'err');
@@ -1276,6 +1839,10 @@ function checkAlerts() {
     lastArriveAlert = now;
   }
 }
+
+updateRecordButton();
+updateReplayButtons();
+updateTimelineUI(true);
 </script>
 </body>
 </html>
