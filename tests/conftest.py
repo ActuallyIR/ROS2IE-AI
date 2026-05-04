@@ -10,13 +10,13 @@ from ros2_agent.ros2.bridge import ROS2Bridge
 
 @pytest.fixture
 def mock_bridge() -> ROS2Bridge:
-    """A ROS2Bridge in mock mode — no real ROS 2 needed."""
+    """Return a ROS2Bridge in mock mode — no real ROS 2 needed."""
     return ROS2Bridge(mock=True)
 
 
 @pytest.fixture
 def mock_settings() -> Settings:
-    """Settings configured for mock mode with a fake API key."""
+    """Return Settings configured for mock mode with a fake API key."""
     return Settings(
         mock_ros2=True,
         llm_provider="openai",

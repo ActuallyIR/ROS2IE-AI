@@ -9,8 +9,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """ROS2 Agent configuration. All values can be set via environment variables
-    (prefix: ROS2_AGENT_) or a .env file."""
+    """ROS2 Agent configuration.
+
+    All values can be set via environment variables (prefix: ``ROS2_AGENT_``) or a ``.env`` file.
+    """
 
     model_config = SettingsConfigDict(
         env_prefix="ROS2_AGENT_",
@@ -66,7 +68,9 @@ class Settings(BaseSettings):
     @field_validator("llm_model", mode="before")
     @classmethod
     def set_default_model(cls, v: str, info: object) -> str:  # noqa: ARG003
+        """Fall back to ``gpt-4o`` when the model string is empty."""
         return v or "gpt-4o"
 
     def get_provider_display(self) -> str:
+        """Return a short ``provider/model`` display string."""
         return f"{self.llm_provider}/{self.llm_model}"

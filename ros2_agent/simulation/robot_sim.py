@@ -46,6 +46,8 @@ OBSTACLES: list[tuple[float, float, float, float]] = [
 
 @dataclass
 class RobotState:
+    """Mutable snapshot of the simulated robot's physical and sensor state."""
+
     x: float = 1.5
     y: float = 1.5
     theta: float = 0.0  # radians, CCW from +X
@@ -112,6 +114,7 @@ class RobotSim:
     _SLIP_TURN_GAIN: float = 0.06            # extra slip while turning
 
     def __init__(self) -> None:
+        """Initialise the simulator with default state and a fresh occupancy grid."""
         self.state = RobotState()
         self._cmd_vx: float = 0.0
         self._cmd_omega: float = 0.0
@@ -149,7 +152,7 @@ class RobotSim:
     # ── Public control API ────────────────────────────────────────────────────
 
     def set_cmd_vel(self, vx: float, omega: float) -> None:
-        """Called by mock ROS2 when cmd_vel is published."""
+        """Handle a cmd_vel command published by mock ROS 2."""
         target_vx = max(-0.5, min(0.5, vx))
         target_omega = max(-2.0, min(2.0, omega))
 
@@ -167,7 +170,7 @@ class RobotSim:
         self._escape_countdown = 0
 
     def set_goal(self, x: float, y: float, goal_id: int | None = None) -> None:
-        """Called by mock ROS2 when a navigation goal is sent."""
+        """Handle a navigation goal sent by mock ROS 2."""
         s = self.state
         s.goal_x = max(0.5, min(MAP_SIZE - 0.5, x))
         s.goal_y = max(0.5, min(MAP_SIZE - 0.5, y))
@@ -545,7 +548,7 @@ class RobotSim:
     _CAM_DETECTION_THRESH: float = 2.5   # metres — objects closer than this are "detected"
     _CAM_NOISE_SIGMA: float = 0.04       # depth noise σ
 
-    def _simulate_camera(self, s: "RobotState") -> "tuple[list[dict], list[float]]":
+    def _simulate_camera(self, s: RobotState) -> tuple[list[dict], list[float]]:
         """Simulate an RGB-D camera using front-sector LiDAR rays.
 
         Returns
@@ -554,6 +557,7 @@ class RobotSim:
             Each entry: {label, confidence, distance_m, pixel_x, pixel_y, bbox_w, bbox_h}
         depth_row : list[float]
             Per-pixel depth (metres), CAM_WIDTH pixels wide.
+
         """
         import random as _rng
 
@@ -604,7 +608,7 @@ class RobotSim:
         x0: int,
         x1: int,
         depths: list[float],
-        s: "RobotState",
+        s: RobotState,
     ) -> None:
         import random as _rng
 
@@ -630,11 +634,11 @@ class RobotSim:
 
     # ── SLAM covariance update ─────────────────────────────────────────────────
 
-    def _update_slam_covariance(self, s: "RobotState") -> None:
-        """Simple EKF-inspired covariance growth/shrink model.
+    def _update_slam_covariance(self, s: RobotState) -> None:
+        """Update SLAM positional covariance using a simple EKF-inspired model.
 
         Motion increases uncertainty; sharp corners (many close LiDAR hits)
-        reduce it (loop-closure proxy).  Covariance is bounded.
+        reduce it (loop-closure proxy). Covariance is bounded.
         """
         speed = abs(s.vx)
         turn = abs(s.omega)
@@ -698,7 +702,7 @@ class RobotSim:
         }
 
     def get_imu_state(self) -> dict:
-        """Simulated IMU: orientation from theta, linear accel from velocity derivative."""
+        """Return a simulated IMU reading: orientation from theta, acceleration from velocity."""
         import random as _rng
         s = self.state
         qz = math.sin(s.theta / 2)
@@ -882,6 +886,7 @@ class RobotSim:
         }
 
     def get_full_path(self) -> list[list[float]]:
+        """Return the last 1000 path poses as ``[x, y]`` pairs."""
         return [[round(p[0], 2), round(p[1], 2)] for p in self.state.full_path[-1000:]]
 
     def get_occupancy_grid(self, resolution: int = 20) -> list[list[float]]:
@@ -918,6 +923,7 @@ class RobotSim:
             self._events.pop(0)
 
     def get_events(self, limit: int = 50) -> list[dict]:
+        """Return the most recent *limit* simulation events."""
         return self._events[-limit:]
 
     # ── Occupancy grid ──────────────────────────────────────────────────────

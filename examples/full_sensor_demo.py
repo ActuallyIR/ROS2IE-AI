@@ -39,13 +39,39 @@ def _c(code: str, text: str) -> str:
         return f"\033[{code}m{text}\033[0m"
     return text
 
-def RED(t: str) -> str:    return _c("91", t)
-def GREEN(t: str) -> str:  return _c("92", t)
-def YELLOW(t: str) -> str: return _c("93", t)
-def CYAN(t: str) -> str:   return _c("96", t)
-def BOLD(t: str) -> str:   return _c("1",  t)
-def DIM(t: str) -> str:    return _c("2",  t)
-def MAGENTA(t: str) -> str: return _c("95", t)
+def RED(t: str) -> str:
+    """Wrap text in red ANSI colour."""
+    return _c("91", t)
+
+
+def GREEN(t: str) -> str:
+    """Wrap text in green ANSI colour."""
+    return _c("92", t)
+
+
+def YELLOW(t: str) -> str:
+    """Wrap text in yellow ANSI colour."""
+    return _c("93", t)
+
+
+def CYAN(t: str) -> str:
+    """Wrap text in cyan ANSI colour."""
+    return _c("96", t)
+
+
+def BOLD(t: str) -> str:
+    """Wrap text in bold ANSI style."""
+    return _c("1", t)
+
+
+def DIM(t: str) -> str:
+    """Wrap text in dim ANSI style."""
+    return _c("2", t)
+
+
+def MAGENTA(t: str) -> str:
+    """Wrap text in magenta ANSI colour."""
+    return _c("95", t)
 
 # ── LIDAR ASCII polar plot ─────────────────────────────────────────────────────
 
@@ -70,9 +96,8 @@ def _lidar_polar(ranges: list[float], lidar_max: float) -> list[str]:
             a = math.radians(i)
             rx = cx + int(round(math.cos(a) * r_cells))
             ry = cy - int(round(math.sin(a) * r_cells))
-            if 0 <= rx < cols and 0 <= ry < rows:
-                if grid[ry][rx] == " ":
-                    grid[ry][rx] = "·"
+            if 0 <= rx < cols and 0 <= ry < rows and grid[ry][rx] == " ":
+                grid[ry][rx] = "·"
 
     # Draw robot at centre
     grid[cy][cx] = "R"
@@ -176,6 +201,7 @@ def _tick_count_str(n: int) -> str:
 
 
 def print_telemetry(sim, tick: int, cmd_vx: float, cmd_omega: float) -> None:
+    """Print a full telemetry dashboard snapshot to the terminal."""
     s = sim.state
     W = 72
 
@@ -266,7 +292,7 @@ def print_telemetry(sim, tick: int, cmd_vx: float, cmd_omega: float) -> None:
               f"min={min_r:.2f}m  max={max_r:.2f}m  mean={mean_r:.2f}m  "
               f"front={front_clear:.2f}m")
         print(f"  {'  Polar (top-down)  ':^25}    {'  Occupancy map  ':^24}")
-        for p_row, m_row in zip(polar, mmap):
+        for p_row, m_row in zip(polar, mmap, strict=False):
             print(f"  {p_row}    {m_row}")
         # Compact range histogram (8 buckets)
         buckets = [0] * 8
@@ -404,6 +430,7 @@ _WAYPOINTS = [
 ]
 
 async def main() -> None:
+    """Run the full-sensor simulation demo loop."""
     sim = get_sim()
     sim.start_background()
 

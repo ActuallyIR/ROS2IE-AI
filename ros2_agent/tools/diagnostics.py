@@ -97,6 +97,7 @@ def create_diagnostic_tools(bridge: ROS2Bridge) -> list:
         Args:
             source_frame: Source frame (e.g. 'base_link', 'map').
             target_frame: Target frame (e.g. 'odom', 'base_footprint').
+
         """
         result = bridge.run(
             ["run", "tf2_ros", "tf2_echo", source_frame, target_frame],
@@ -115,6 +116,7 @@ def create_diagnostic_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             timeout_sec: How long to wait for a diagnostics message (default 3).
+
         """
         result = bridge.run(
             ["topic", "echo", "--once", "/diagnostics"],

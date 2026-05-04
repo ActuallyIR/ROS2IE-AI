@@ -16,6 +16,7 @@ def create_topic_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             filter_str: Optional substring to filter results (e.g. 'camera', 'nav').
+
         """
         result = bridge.run(["topic", "list"])
         if not result.success:
@@ -39,6 +40,7 @@ def create_topic_tools(bridge: ROS2Bridge) -> list:
             topic_name: Topic to read (e.g. /odom, /scan, /battery_state).
             count: Number of messages to read (default 1).
             timeout_sec: Seconds to wait for messages (default 5).
+
         """
         args = ["topic", "echo"]
         if count == 1:
@@ -58,6 +60,7 @@ def create_topic_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             topic_name: Topic name (e.g. /cmd_vel).
+
         """
         result = bridge.run(["topic", "info", "--verbose", topic_name])
         if not result.success:
@@ -81,6 +84,7 @@ def create_topic_tools(bridge: ROS2Bridge) -> list:
             msg_type: ROS 2 message type (e.g. geometry_msgs/msg/Twist).
             message_yaml: Message content in YAML format (e.g. "{linear: {x: 0.5}}").
             times: Number of times to publish (default 1).
+
         """
         args = ["topic", "pub"]
         if times == 1:
@@ -101,6 +105,7 @@ def create_topic_tools(bridge: ROS2Bridge) -> list:
         Args:
             topic_name: Topic name to monitor.
             window: Number of messages to average over (default 10).
+
         """
         result = bridge.run(
             ["topic", "hz", "--window", str(window), topic_name],
@@ -116,6 +121,7 @@ def create_topic_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             topic_name: Topic name to measure.
+
         """
         result = bridge.run(["topic", "bw", topic_name], timeout=15)
         if not result.success:

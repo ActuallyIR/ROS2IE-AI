@@ -138,6 +138,7 @@ class MockROS2:
 
     @classmethod
     def run(cls, args: list[str]) -> CommandResult:
+        """Dispatch ``args`` to the appropriate mock handler and return a :class:`CommandResult`."""
         if not args:
             return CommandResult(success=False, error="No ros2 subcommand given")
 

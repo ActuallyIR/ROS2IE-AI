@@ -22,6 +22,7 @@ def create_log_tools(bridge: ROS2Bridge) -> list:
             count: Number of messages to retrieve (default 20).
             level: Minimum log level filter: DEBUG | INFO | WARN | ERROR | FATAL.
             node_filter: Filter messages from a specific node name substring.
+
         """
         # Echo /rosout with a count limit
         result = bridge.run(
@@ -60,6 +61,7 @@ def create_log_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             count: Maximum number of error messages to return (default 10).
+
         """
         result = bridge.run(
             ["topic", "echo", "--count", str(count * 4), "--no-daemon", "/rosout"],
@@ -87,6 +89,7 @@ def create_log_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             count: Number of recent error messages to analyse (default 10).
+
         """
         result = bridge.run(
             ["topic", "echo", "--count", str(count * 5), "--no-daemon", "/rosout"],

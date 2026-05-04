@@ -1,5 +1,4 @@
-"""
-ROS2 Agent - LLM-powered agent for ROS 2 robots.
+"""ROS2 Agent - LLM-powered agent for ROS 2 robots.
 
 Control, monitor, and debug your ROS 2 robots using natural language.
 """

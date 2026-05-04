@@ -25,34 +25,48 @@ STATIC_DIR = pathlib.Path(__file__).parent / "static"
 
 
 class ChatRequest(BaseModel):
+    """Request body for the /chat endpoint."""
+
     message: str
     session_id: str = "web-default"
 
 
 class ChatResponse(BaseModel):
+    """Response body for the /chat endpoint."""
+
     response: str
     session_id: str
 
 
 class WaypointsRequest(BaseModel):
+    """Request body for setting navigation waypoints."""
+
     waypoints: list[list[float]]
 
 
 class PhysicsUploadRequest(BaseModel):
+    """Request body for uploading a custom physics profile."""
+
     name: str = "custom-physics"
     config: dict
 
 
 class PolicyUploadRequest(BaseModel):
+    """Request body for uploading a robot control policy."""
+
     name: str = "custom-policy"
     config: dict
 
 
 class PolicyRunRequest(BaseModel):
+    """Request body for triggering a policy execution run."""
+
     duration_s: float = 5.0
 
 
 class UniversalProfileRequest(BaseModel):
+    """Request body for uploading a universal robot profile."""
+
     schema_version: str = "1.0.0"
     name: str = "universal-robot-profile"
     profile_type: str = "robot_profile"
@@ -63,6 +77,7 @@ class UniversalProfileRequest(BaseModel):
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
+    """Create and configure the FastAPI application."""
     settings = settings or Settings()
     agent = ROS2Agent(settings)
     sim = get_sim()  # physics singleton — shared with mock layer

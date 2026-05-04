@@ -16,6 +16,7 @@ def create_service_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             filter_str: Optional substring to filter results.
+
         """
         result = bridge.run(["service", "list"])
         if not result.success:
@@ -39,6 +40,7 @@ def create_service_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             service_name: Full service name (e.g. /move_base/clear_costmaps).
+
         """
         result = bridge.run(["service", "type", service_name])
         if not result.success:
@@ -53,6 +55,7 @@ def create_service_tools(bridge: ROS2Bridge) -> list:
             service_name: Service to call (e.g. /move_base/clear_costmaps).
             service_type: Service type (e.g. std_srvs/srv/Empty).
             request_yaml: Request data in YAML format (default '{}' for empty request).
+
         """
         result = bridge.run(
             ["service", "call", service_name, service_type, request_yaml],

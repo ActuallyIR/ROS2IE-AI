@@ -975,7 +975,7 @@ MC.addEventListener('click', e => {
   if (!mapClickGoal) return;
   const rect = MC.getBoundingClientRect();
   const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-  const W = MC.width, H = MC.height;
+  const W = MC._cssW || MC.width, H = MC._cssH || MC.height;
   const scale = Math.min(W,H) / MAP_SIZE;
   const ox = (W - MAP_SIZE*scale)/2, oy = (H - MAP_SIZE*scale)/2;
   const gx = (mx - ox) / scale;

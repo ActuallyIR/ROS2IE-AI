@@ -81,10 +81,12 @@ class StreamEvent:
     """A single streamed event from the agent."""
 
     def __init__(self, kind: str, data: Any) -> None:
+        """Initialise a StreamEvent with *kind* and *data*."""
         self.kind = kind  # "text" | "tool_call" | "tool_result" | "done"
         self.data = data
 
     def __repr__(self) -> str:
+        """Return a short debugging representation."""
         return f"StreamEvent(kind={self.kind!r}, data={str(self.data)[:80]!r})"
 
 
@@ -105,6 +107,7 @@ class ROS2Agent:
     """
 
     def __init__(self, settings: Settings | None = None) -> None:
+        """Initialise the agent with optional *settings* (defaults to :class:`Settings`)."""
         self.settings = settings or Settings()
         self.bridge = ROS2Bridge(
             ros_domain_id=self.settings.ros_domain_id,
@@ -229,9 +232,11 @@ class ROS2Agent:
 
     @property
     def ros_available(self) -> bool:
+        """Return ``True`` when the ROS 2 bridge is reachable."""
         return self.bridge.available
 
     def __repr__(self) -> str:
+        """Return a concise string representation of this agent."""
         return (
             f"ROS2Agent(provider={self.settings.llm_provider!r}, "
             f"model={self.settings.llm_model!r}, "

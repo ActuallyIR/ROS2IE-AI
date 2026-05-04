@@ -77,7 +77,7 @@ def chat(
         None, "--session", "-s", help="Session ID for persistent memory"
     ),
 ) -> None:
-    """[bold cyan]Start an interactive ROS 2 Agent chat session.[/bold cyan]
+    r"""Start an interactive ROS 2 Agent chat session.
 
     \b
     Examples:
@@ -178,7 +178,7 @@ def run(
     mock: bool = typer.Option(False, "--mock"),
     json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
 ) -> None:
-    """Run a [bold]single query[/bold] and print the result (non-interactive).
+    r"""Run a [bold]single query[/bold] and print the result (non-interactive).
 
     \b
     Example:
@@ -250,7 +250,7 @@ def web(
     mock: bool = typer.Option(False, "--mock"),
     reload: bool = typer.Option(False, "--reload", help="Auto-reload on code changes (dev)"),
 ) -> None:
-    """Start the [bold cyan]web UI[/bold cyan] server.
+    r"""Start the [bold cyan]web UI[/bold cyan] server.
 
     \b
     Then open http://localhost:8080 in your browser.
@@ -279,6 +279,7 @@ def web(
 
 
 def _version_callback(value: bool) -> None:
+    """Print the version string and exit when *value* is truthy."""
     if value:
         typer.echo(f"ros2-agent v{__version__}")
         raise typer.Exit()
@@ -290,4 +291,5 @@ def main_callback(
         None, "--version", callback=_version_callback, is_eager=True, help="Print version and exit"
     ),
 ) -> None:
+    """Entry-point callback used by Typer; handles --version."""
     pass

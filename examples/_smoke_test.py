@@ -1,5 +1,7 @@
 """Quick integration smoke-test for all sensor layers."""
-import asyncio, sys
+import asyncio
+import sys
+
 sys.path.insert(0, ".")
 from ros2_agent.simulation.robot_sim import get_sim
 

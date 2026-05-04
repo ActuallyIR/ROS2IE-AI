@@ -16,6 +16,7 @@ def create_launch_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             filter_str: Optional substring to filter package names.
+
         """
         result = bridge.run(["pkg", "list"])
         if not result.success:
@@ -40,6 +41,7 @@ def create_launch_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             package_name: ROS 2 package name (e.g. nav2_bringup).
+
         """
         result = bridge.run(["pkg", "executables", package_name])
         if not result.success:
@@ -61,6 +63,7 @@ def create_launch_tools(bridge: ROS2Bridge) -> list:
             package_name: ROS 2 package (e.g. nav2_bringup).
             launch_file: Launch file name (e.g. bringup.launch.py).
             launch_args: Optional launch arguments as space-separated key:=value pairs.
+
         """
         args = ["launch", package_name, launch_file]
         if launch_args:
@@ -79,6 +82,7 @@ def create_launch_tools(bridge: ROS2Bridge) -> list:
             package_name: ROS 2 package (e.g. turtlesim).
             node_executable: Executable name inside the package (e.g. turtlesim_node).
             node_args: Additional ROS arguments (e.g. '--ros-args -p use_sim_time:=true').
+
         """
         args = ["run", package_name, node_executable]
         if node_args:
@@ -102,6 +106,7 @@ def create_launch_tools(bridge: ROS2Bridge) -> list:
                     Use '-a' to record all topics.
             output_name: Output bag file name prefix (default: ros2bag_recording).
             duration_sec: Recording duration in seconds (default 30).
+
         """
         topic_args = topics.split() if topics != "-a" else ["-a"]
         args = ["bag", "record", "-o", output_name, "--duration", str(duration_sec), *topic_args]

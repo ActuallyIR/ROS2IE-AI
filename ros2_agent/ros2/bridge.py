@@ -24,6 +24,7 @@ class CommandResult:
         return self.stdout if self.success else (self.error or self.stderr)
 
     def __str__(self) -> str:
+        """Return the most relevant output as a plain string."""
         return self.output
 
 
@@ -42,6 +43,7 @@ class ROS2Bridge:
         timeout: int = 10,
         mock: bool = False,
     ) -> None:
+        """Initialise the bridge with connection and execution settings."""
         self.ros_domain_id = ros_domain_id
         self.ros_distro = ros_distro
         self.workspace_path = workspace_path
@@ -66,6 +68,7 @@ class ROS2Bridge:
         Args:
             args: Arguments to pass after `ros2` (e.g. ``["topic", "list"]``).
             timeout: Per-call timeout override in seconds.
+
         """
         if self.mock:
             from ros2_agent.ros2.mock import MockROS2
@@ -122,6 +125,7 @@ class ROS2Bridge:
         return env
 
     def __repr__(self) -> str:
+        """Return a debugging string showing the domain ID, distro, and mode."""
         mode = "mock" if self.mock else ("live" if self._available else "unavailable")
         return (
             f"ROS2Bridge(domain_id={self.ros_domain_id}, distro={self.ros_distro!r}, mode={mode!r})"

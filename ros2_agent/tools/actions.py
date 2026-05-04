@@ -16,6 +16,7 @@ def create_action_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             filter_str: Optional substring to filter by name.
+
         """
         result = bridge.run(["action", "list"])
         if not result.success:
@@ -36,6 +37,7 @@ def create_action_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             action_name: Action name (e.g. /navigate_to_pose).
+
         """
         result = bridge.run(["action", "info", "--count", action_name])
         if not result.success:
@@ -58,6 +60,7 @@ def create_action_tools(bridge: ROS2Bridge) -> list:
             action_type: Action type (e.g. nav2_msgs/action/NavigateToPose).
             goal_yaml: Goal in YAML format.
             feedback: Whether to print feedback messages while executing.
+
         """
         args = ["action", "send_goal"]
         if feedback:

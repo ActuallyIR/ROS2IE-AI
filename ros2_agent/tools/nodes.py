@@ -16,6 +16,7 @@ def create_node_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             filter_str: Optional substring to filter by name.
+
         """
         result = bridge.run(["node", "list"])
         if not result.success:
@@ -38,6 +39,7 @@ def create_node_tools(bridge: ROS2Bridge) -> list:
 
         Args:
             node_name: Node name (e.g. /bt_navigator).
+
         """
         result = bridge.run(["node", "info", node_name])
         if not result.success:
