@@ -91,9 +91,9 @@ class RobotSim:
     GOAL_TOLERANCE: float = 0.20
 
     # Motor dynamics (acceleration limits — makes motion feel physical)
-    _MAX_ACCEL: float = 1.5      # m/s² forward acceleration limit
-    _MAX_ALPHA: float = 4.0      # rad/s² angular acceleration limit
-    _MOTOR_DEADZONE_VX: float = 0.03   # static friction deadzone (m/s command)
+    _MAX_ACCEL: float = 1.5  # m/s² forward acceleration limit
+    _MAX_ALPHA: float = 4.0  # rad/s² angular acceleration limit
+    _MOTOR_DEADZONE_VX: float = 0.03  # static friction deadzone (m/s command)
     _MOTOR_DEADZONE_OMEGA: float = 0.08  # static friction deadzone (rad/s command)
 
     # Sensor noise
@@ -107,11 +107,11 @@ class RobotSim:
     _STUCK_TICKS: int = 25  # ticks without movement = stuck (~1.25 s)
 
     # Realism knobs
-    _CONTROL_LATENCY_S: float = 0.09         # command transport+controller latency
-    _ROLLING_RESISTANCE: float = 0.55        # linear damping coefficient
-    _ANGULAR_DAMPING: float = 0.95           # angular damping coefficient
-    _SLIP_BASE: float = 0.025                # baseline longitudinal slip
-    _SLIP_TURN_GAIN: float = 0.06            # extra slip while turning
+    _CONTROL_LATENCY_S: float = 0.09  # command transport+controller latency
+    _ROLLING_RESISTANCE: float = 0.55  # linear damping coefficient
+    _ANGULAR_DAMPING: float = 0.95  # angular damping coefficient
+    _SLIP_BASE: float = 0.025  # baseline longitudinal slip
+    _SLIP_TURN_GAIN: float = 0.06  # extra slip while turning
 
     def __init__(self) -> None:
         """Initialise the simulator with default state and a fresh occupancy grid."""
@@ -187,7 +187,10 @@ class RobotSim:
     def set_waypoints(self, waypoints: list[tuple[float, float]]) -> None:
         """Set a queue of waypoints to visit sequentially."""
         s = self.state
-        clamped = [(max(0.5, min(MAP_SIZE - 0.5, wx)), max(0.5, min(MAP_SIZE - 0.5, wy))) for wx, wy in waypoints]
+        clamped = [
+            (max(0.5, min(MAP_SIZE - 0.5, wx)), max(0.5, min(MAP_SIZE - 0.5, wy)))
+            for wx, wy in waypoints
+        ]
         s.waypoints = clamped
         s.waypoint_index = 0
         if clamped:
@@ -319,7 +322,12 @@ class RobotSim:
             if waypoints:
                 self.set_waypoints(waypoints)
             await asyncio.sleep(run_for)
-            return {"ok": True, "mode": "waypoints", "waypoints": len(waypoints), "duration_s": run_for}
+            return {
+                "ok": True,
+                "mode": "waypoints",
+                "waypoints": len(waypoints),
+                "duration_s": run_for,
+            }
 
         # Default: hold a fixed cmd_vel, useful for baseline policy tests
         vx = float(policy.get("vx", 0.3))
@@ -419,7 +427,10 @@ class RobotSim:
                     s.waypoint_index += 1
                     next_wp = s.waypoints[s.waypoint_index]
                     self.set_goal(next_wp[0], next_wp[1])
-                    self._log_event("waypoint_next", f"Advancing to waypoint {s.waypoint_index + 1}/{len(s.waypoints)}")
+                    self._log_event(
+                        "waypoint_next",
+                        f"Advancing to waypoint {s.waypoint_index + 1}/{len(s.waypoints)}",
+                    )
             else:
                 target_angle = math.atan2(dy, dx)
                 angle_err = _angle_diff(target_angle, s.theta)
@@ -460,7 +471,9 @@ class RobotSim:
         # Drag / damping terms and turn-related slip.
         # High yaw rate reduces net longitudinal traction in a physically plausible way.
         speed_factor = max(0.0, abs(s.vx) - 0.35)
-        slip = min(0.28, self._SLIP_BASE + abs(s.omega) * self._SLIP_TURN_GAIN + speed_factor * 0.12)
+        slip = min(
+            0.28, self._SLIP_BASE + abs(s.omega) * self._SLIP_TURN_GAIN + speed_factor * 0.12
+        )
         self._current_slip = slip
         s.vx *= max(0.0, 1.0 - self._ROLLING_RESISTANCE * dt)
         s.omega *= max(0.0, 1.0 - self._ANGULAR_DAMPING * dt)
@@ -545,8 +558,8 @@ class RobotSim:
     # Horizontal FOV: 69° (typical RGB-D camera), 64 pixels wide virtual sensor
     _CAM_FOV_DEG: float = 69.0
     _CAM_WIDTH: int = 64
-    _CAM_DETECTION_THRESH: float = 2.5   # metres — objects closer than this are "detected"
-    _CAM_NOISE_SIGMA: float = 0.04       # depth noise σ
+    _CAM_DETECTION_THRESH: float = 2.5  # metres — objects closer than this are "detected"
+    _CAM_NOISE_SIGMA: float = 0.04  # depth noise σ
 
     def _simulate_camera(self, s: RobotState) -> tuple[list[dict], list[float]]:
         """Simulate an RGB-D camera using front-sector LiDAR rays.
@@ -616,21 +629,28 @@ class RobotSim:
         w = max(1, x1 - x0 + 1)
         mean_d = sum(depths) / len(depths)
         # Label heuristic: walls are very close to map edges, else obstacle
-        near_wall = (
-            s.x < 0.5 or s.x > MAP_SIZE - 0.5
-            or s.y < 0.5 or s.y > MAP_SIZE - 0.5
-        )
+        near_wall = s.x < 0.5 or s.x > MAP_SIZE - 0.5 or s.y < 0.5 or s.y > MAP_SIZE - 0.5
         label = "wall" if near_wall else "obstacle"
-        confidence = round(min(0.99, 0.75 + (self._CAM_DETECTION_THRESH - mean_d) / self._CAM_DETECTION_THRESH * 0.24 + _rng.uniform(-0.03, 0.03)), 2)
-        detections.append({
-            "label": label,
-            "confidence": confidence,
-            "distance_m": round(mean_d, 3),
-            "pixel_x": cx,
-            "pixel_y": 12,    # camera is mounted ~12 px above centre row
-            "bbox_w": w,
-            "bbox_h": max(4, int(30 / max(0.3, mean_d))),
-        })
+        confidence = round(
+            min(
+                0.99,
+                0.75
+                + (self._CAM_DETECTION_THRESH - mean_d) / self._CAM_DETECTION_THRESH * 0.24
+                + _rng.uniform(-0.03, 0.03),
+            ),
+            2,
+        )
+        detections.append(
+            {
+                "label": label,
+                "confidence": confidence,
+                "distance_m": round(mean_d, 3),
+                "pixel_x": cx,
+                "pixel_y": 12,  # camera is mounted ~12 px above centre row
+                "bbox_w": w,
+                "bbox_h": max(4, int(30 / max(0.3, mean_d))),
+            }
+        )
 
     # ── SLAM covariance update ─────────────────────────────────────────────────
 
@@ -655,9 +675,7 @@ class RobotSim:
         # Clamp
         s.slam_covariance = max(0.005, min(0.50, s.slam_covariance))
         # Count explored cells
-        s.slam_map_cells_seen = sum(
-            1 for row in s.occupancy_grid for c in row if c > 0.05
-        )
+        s.slam_map_cells_seen = sum(1 for row in s.occupancy_grid for c in row if c > 0.05)
 
     def get_slam_state(self) -> dict:
         """Return a snapshot of SLAM-layer data."""
@@ -690,12 +708,24 @@ class RobotSim:
         # Integrate to approximate joint positions (wraps at ±π)
         return {
             "wheel_left": {
-                "position_rad": round(math.atan2(math.sin(s.timestamp * omega_left % (2 * math.pi)), math.cos(s.timestamp * omega_left % (2 * math.pi))), 4),
+                "position_rad": round(
+                    math.atan2(
+                        math.sin(s.timestamp * omega_left % (2 * math.pi)),
+                        math.cos(s.timestamp * omega_left % (2 * math.pi)),
+                    ),
+                    4,
+                ),
                 "velocity_rad_s": round(omega_left, 4),
                 "effort_Nm": round(abs(omega_left) * 0.15, 4),
             },
             "wheel_right": {
-                "position_rad": round(math.atan2(math.sin(s.timestamp * omega_right % (2 * math.pi)), math.cos(s.timestamp * omega_right % (2 * math.pi))), 4),
+                "position_rad": round(
+                    math.atan2(
+                        math.sin(s.timestamp * omega_right % (2 * math.pi)),
+                        math.cos(s.timestamp * omega_right % (2 * math.pi)),
+                    ),
+                    4,
+                ),
                 "velocity_rad_s": round(omega_right, 4),
                 "effort_Nm": round(abs(omega_right) * 0.15, 4),
             },
@@ -704,6 +734,7 @@ class RobotSim:
     def get_imu_state(self) -> dict:
         """Return a simulated IMU reading: orientation from theta, acceleration from velocity."""
         import random as _rng
+
         s = self.state
         qz = math.sin(s.theta / 2)
         qw = math.cos(s.theta / 2)
@@ -726,7 +757,6 @@ class RobotSim:
         }
 
     # ── Geometry helpers ──────────────────────────────────────────────────────
-
 
     def _front_clearance(self, s: RobotState) -> float:
         """Minimum LiDAR range in the forward ±60° cone."""
@@ -914,11 +944,13 @@ class RobotSim:
     # ── Event log ───────────────────────────────────────────────────────────
 
     def _log_event(self, category: str, message: str) -> None:
-        self._events.append({
-            "ts": time.time(),
-            "cat": category,
-            "msg": message,
-        })
+        self._events.append(
+            {
+                "ts": time.time(),
+                "cat": category,
+                "msg": message,
+            }
+        )
         if len(self._events) > 200:
             self._events.pop(0)
 
